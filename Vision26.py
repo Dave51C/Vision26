@@ -39,7 +39,6 @@ def queueImage (cam):
     print ("Queueing ",cam.usage)
     while True:
         frame_time, input_img = cam.input_stream.grabFrame(cam.imgBuf)
-
         cam.queue.append(input_img)
 
 def customizeCamera(config):
@@ -298,10 +297,16 @@ if __name__ == "__main__":
                 frame = Cam.queue.pop()
                 gray = cv2.cvtColor (frame, cv2.COLOR_BGR2GRAY)
                 results = detector.detect(gray)
-                try:
-                    Cam.robotPose = pose(results,Cam.mtx,Cam.dist)
-                except:
-                    pass
+                #print ("                    ",len(results))
+                for r in results:
+                    try:
+                        ret, rvecs, tvecs = cv2.solvePnP(TAG_CORNERS[r.tag_id],
+                           r.corners, mtx,dist, cv2.SOLVEPNP_IPPE_SQUARE)
+                        #Cam.robotPose = pose(results,Cam.mtx,Cam.dist)
+                        CamYaw, CamPitch, CamRoll = Cam.frcYPR(rvecs)
+                        CamX, CamY, CamZ = tvecs
+                    except:
+                        pass
                 if Cam.usage == 'ClimbCam':
                     output_stream.putFrame(frame)
                 counter -= 1
