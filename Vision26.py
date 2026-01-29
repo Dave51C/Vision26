@@ -7,7 +7,7 @@
 # Copyright (c) FIRST and other WPILib contributors.
 # Open Source Software; you can modify and/or share it under the terms of
 # the WPILib BSD license file in the root directory of this project.
-
+import taichi as ti
 import json
 import time
 import cv2
@@ -17,10 +17,16 @@ from collections import deque
 import threading
 import numpy as np
 from pprint import pprint
+
+from numpy.ma.core import shape
+
 from PiggyVision26 import Webcam, BotCam, pose
 
 from cscore import CameraServer, VideoSource, UsbCamera, MjpegServer
 from ntcore import NetworkTableInstance, EventFlags
+ti.init(arch=ti.cpu, cpu_max_num_threads=4) # taichi init
+batch_input =ti.Vector.field(3, dtype = ti.f32, shape=(4, 480, 640))
+batch_gray = ti.field(dtype=ti.f32, shape=(4, 480, 640))
 
 configFile = "/boot/frc.json"
 #configFile = "./frc.json"
@@ -33,6 +39,12 @@ cameraConfigs         = []
 switchedCameraConfigs = []
 cameras               = []
 CamQs                 = []
+#taichi kernel
+@ti.kernel
+def process_batch():
+    for b, i, j in batch_input:
+        r, g, b_val = batch_input[b, i, j][3], batch_input[b, i, j][2], batch_input[b, i, j][1], batch_input[b, i, j][0]
+        batch_gray[b, i, j] = 0.299*r + 0.587*g + 0.114 *b_val
 
 def queueImage (cam):
     import apriltag
@@ -292,10 +304,19 @@ if __name__ == "__main__":
     counter = 300
     start = time.time()
     while True:
+        frames = []
         for Cam in CamQs:
             try:
-                frame = Cam.queue.pop()
-                gray = cv2.cvtColor (frame, cv2.COLOR_BGR2GRAY)
+                frames.append(Cam.queue.pop())
+            except IndexError:
+                frames.append(np.zeros((480, 640, 3), dtype=np.uint8))
+                stacked = np.stack(frames).astype(np.float32)/255.0
+                batch_input.from_numpy(stacked)
+                process_batch()
+                gray_images = (batch_gray.to_numpy()*255).astype(np.uint8)
+                for idx, Cam in enumerate(CamQs):
+                    results = detector.detect(gray_images[idx])
+
                 results = detector.detect(gray)
                 #print ("                    ",len(results))
                 for r in results:
@@ -308,7 +329,7 @@ if __name__ == "__main__":
                     except:
                         pass
                 if Cam.usage == 'ClimbCam':
-                    output_stream.putFrame(frame)
+                    output_stream.putFrame(frame[idx])
                 counter -= 1
             except:
                 pass
