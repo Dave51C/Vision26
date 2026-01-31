@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # $Source: /home/scrobotics/src/2026/RCS/Vision26.py,v $
-# $Revision: 1.1 $
-# $Date: 2026/01/01 00:39:39 $
+# $Revision: 1.2 $
+# $Date: 2026/01/26 03:31:59 $
 # $Author: scrobotics $
 
 # Copyright (c) FIRST and other WPILib contributors.
@@ -39,6 +39,7 @@ def queueImage (cam):
     print ("Queueing ",cam.usage)
     while True:
         frame_time, input_img = cam.input_stream.grabFrame(cam.imgBuf)
+        #print (cam.usage,frame_time)
         cam.queue.append(input_img)
 
 def customizeCamera(config):
@@ -292,21 +293,22 @@ if __name__ == "__main__":
     counter = 300
     start = time.time()
     while True:
+        time.sleep(0.02)
+        robotX, robotY, robotYaw, N = 0.0, 0.0,  0.0, 0
         for Cam in CamQs:
             try:
                 frame = Cam.queue.pop()
                 gray = cv2.cvtColor (frame, cv2.COLOR_BGR2GRAY)
                 results = detector.detect(gray)
-                #print ("                    ",len(results))
-                for r in results:
-                    try:
-                        ret, rvecs, tvecs = cv2.solvePnP(TAG_CORNERS[r.tag_id],
-                           r.corners, mtx,dist, cv2.SOLVEPNP_IPPE_SQUARE)
-                        #Cam.robotPose = pose(results,Cam.mtx,Cam.dist)
-                        CamYaw, CamPitch, CamRoll = Cam.frcYPR(rvecs)
-                        CamX, CamY, CamZ = tvecs
-                    except:
-                        pass
+                if len(results) > 0:
+                    Cam.robotPose = pose(results,Cam)
+                    BotX, BotY = Cam.robotPose
+                    #print (Cam.usage,"X:",BotX,"   Y:",BotY)
+                    robotX += BotX
+                    robotY += BotY
+                    N += 1
+                else:
+                    continue
                 if Cam.usage == 'ClimbCam':
                     output_stream.putFrame(frame)
                 counter -= 1
@@ -317,3 +319,6 @@ if __name__ == "__main__":
                 counter = 300
                 print (counter/(stop - start),'fps')
                 start = stop
+        if N > 0:
+            print (f'Average          {robotX/N:>6.2f} {robotY/N:6.2f}')
+            print (' ')
