@@ -1,0 +1,127 @@
+{
+    "cameras": [
+        {
+            "fps": 30,
+            "height": 480,
+            "name": "Camera_A_640x480",
+            "path": "/dev/video0",
+            "pixel format": "mjpeg",
+            "properties": [
+                {
+                    "name": "usage",
+                    "value": "DriverCam"
+                }
+            ],
+            "stream": {
+                "properties": [
+                    {
+                        "name": "width",
+                        "value": 640
+                    },
+                    {
+                        "name": "height",
+                        "value": 480
+                    },
+                    {
+                        "name": "fps",
+                        "value": 30
+                    }
+                ]
+            },
+            "width": 640
+        },
+        {
+            "fps": 30,
+            "height": 480,
+            "name": "Camera_B_640x480",
+            "path": "/dev/video2",
+            "pixel format": "mjpeg",
+            "properties": [
+                {
+                    "name": "usage",
+                    "value": "FrontCam"
+                }
+            ],
+            "stream": {
+                "properties": [
+                    {
+                        "name": "width",
+                        "value": 640
+                    },
+                    {
+                        "name": "height",
+                        "value": 480
+                    },
+                    {
+                        "name": "fps",
+                        "value": 30
+                    }
+                ]
+            },
+            "width": 640
+        },
+        {
+            "fps": 30,
+            "height": 480,
+            "name": "Camera_Z_640x480",
+            "path": "/dev/video4",
+            "pixel format": "mjpeg",
+            "properties": [
+                {
+                    "name": "usage",
+                    "value": "ClimbCam"
+                }
+            ],
+            "stream": {
+                "properties": [
+                    {
+                        "name": "width",
+                        "value": 640
+                    },
+                    {
+                        "name": "height",
+                        "value": 480
+                    },
+                    {
+                        "name": "fps",
+                        "value": 30
+                    }
+                ]
+            },
+            "width": 640
+        },
+        {
+            "fps": 30,
+            "height": 480,
+            "name": "Camera_Z_640x480",
+            "path": "/dev/video2",
+            "pixel format": "mjpeg",
+            "properties": [
+                {
+                    "name": "usage",
+                    "value": "BogusCam"
+                }
+            ],
+            "stream": {
+                "properties": [
+                    {
+                        "name": "width",
+                        "value": 640
+                    },
+                    {
+                        "name": "height",
+                        "value": 480
+                    },
+                    {
+                        "name": "fps",
+                        "value": 30
+                    }
+                ]
+            },
+            "width": 640
+        }
+    ],
+    "ntmode": "client",
+    "switched cameras": [],
+    "team": 250
+}
