@@ -293,11 +293,12 @@ if __name__ == "__main__":
     counter = 300
     start = time.time()
     while True:
-        time.sleep(0.02)
+        #time.sleep(0.02)
         robotX, robotY, robotYaw, N = 0.0, 0.0,  0.0, 0
         for Cam in CamQs:
             try:
-                frame = Cam.queue.pop()
+                #frame = Cam.queue.pop()
+                frame = Cam.queue[0]       # non-destructive read
                 gray = cv2.cvtColor (frame, cv2.COLOR_BGR2GRAY)
                 results = detector.detect(gray)
                 if len(results) > 0:
