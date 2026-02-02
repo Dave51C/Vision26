@@ -1,0 +1,14 @@
+{
+   "name"   : "Camera_Z_640x480",
+   "width"  : 640,
+   "height" : 480,
+   "mtx"    :
+   [[604.4203299720156, 0.0, 279.8712950704236],
+    [0.0, 594.1222550170529, 174.78894716651322],
+    [0.0, 0.0, 1.0]],
+   "dist"   :
+   [-0.37766437311765455, 0.2724823398437437, 0.0015878161858098308, -0.0013309827754539318, -0.14809281511874098],
+   "FudgeOffset": 0.0,
+   "FudgeFactor": 1.0,
+   "DetectorOptions":"families=\"tag36h11\", quad_decimate=2, quad_blur= 0.0,    refine_edges= 1, refine_decode= 1, nthreads= 4, refine_pose= 0, quad_contours= 1"
+}

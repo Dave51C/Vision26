@@ -1,8 +1,8 @@
 {
-    "localX": 18,
-    "localY": 10,
-    "localZ": 10,
-    "pitch": 0,
-    "usage": "FrontCam",
-    "yaw": 0
+    "localX": 15.0,
+    "localY": -8.0,
+    "localZ": 2.0,
+    "pitch": 0.0,
+    "usage": "ExtraCam",
+    "yaw": 0.0
 }
