@@ -1,0 +1,68 @@
+Here's a consideration I overlooked in 2025: don't mix resolutions. Make sure
+they're all 640x480 or 800x600 or something like that. Also be aware that some
+cameras may do a certain reolution but at a reduced frame rate, like 15fps. We
+want a frame rate of 30fps or faster.
+
+PICK A RESOLUTION:
+=================
+  1) Run this comanmd:
+
+  v4l2-ctl --list-devices
+
+  You'll get a list that looks like this:
+  Integrated_Webcam_HD: Integrate (usb-0000:00:14.0-2):
+	  /dev/video0
+	  /dev/video1
+	  /dev/media0
+
+  USB 2.0 Camera: S200C (usb-0000:00:14.0-3):
+	  /dev/video2
+	  /dev/video3
+	  /dev/media1
+
+  We're interested in the USB Camera entry, specifically the "/dev/vidoe2" line.
+
+  2) Run this command (note the use of "/dev/video2" from the above)
+
+  v4l2-ctl -d /dev/video2 --list-formats-ext |\
+  sed -n '/Size/{s/^.* //p}' |\
+  sort -k1,1n -u 
+
+  You'll get a list that looks like this:
+  160x120
+  176x144
+  320x240
+  352x288
+  640x480
+  800x600
+  848x480
+  1024x768
+  1280x1024
+  1920x1080
+
+  We'll use 640x480
+
+COLLECT CALIBRATION IMAGES:
+==========================
+  ASSUMING the webcam is video2,
+  Run the program calibration_shots.py using the 648x480 resolution:
+
+  3) python3 calibration_shots.py --width 640 --height 480 --device 2 
+
+  A vidow stream will open and a countdown will start. After the specified
+  interval a picture is taken. The countdown resets and the process repeats
+  until the specified number of shots are taken.
+
+  Be sure to get enough images of the checkerboard in different places and
+  orientations.
+
+GENERATE CAMERA MATRIX:
+======================
+  Run the program calibrate_from_stills.py supplying a name for the camera.
+  Here, we're calling it Camera_B.
+
+  4) python3 calibrate_from_stills.py --name Camera_B
+
+  This will create a file named Camera_B_640x480.json. It conntains
+    "mtx" - the camera's "intrinsic matrix"
+    "dist" - the camera's distortion coefficients
