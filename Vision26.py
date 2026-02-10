@@ -17,7 +17,9 @@ from collections import deque
 import threading
 import numpy as np
 from pprint import pprint
-from PiggyVision26 import Webcam, BotCam, pose
+#from PiggyVision26 import Webcam, BotCam, pose
+import PiggyVision26 as pv
+from math import degrees
 
 from cscore import CameraServer, VideoSource, UsbCamera, MjpegServer
 from ntcore import NetworkTableInstance, EventFlags
@@ -33,6 +35,19 @@ cameraConfigs         = []
 switchedCameraConfigs = []
 cameras               = []
 CamQs                 = []
+Display               = {}
+
+def overlay(frame,Display,width,height):
+    # last param (16) is for anti-alias line type LINE_AA
+    col,row = 50,100
+    try:
+        cv2.line (frame, (int(width/2),0), (int(width/2),height), (0,255,0), 5, 16)
+        for label in Display.items():
+            cv2.putText (frame, label[0]+"="+str(round(label[1],1)),(col,row),
+                     cv2.FONT_HERSHEY_PLAIN, 3.0, (0,0,255), 3)
+            row+=50
+    except Exception as e:
+        print(e)
 
 def queueImage (cam):
     import apriltag
@@ -48,7 +63,7 @@ def customizeCamera(config):
     match config.usage:
         case 'DriverCam':
             print ('customizing DriverCam')
-            DriverCam = BotCam('DriverCam')
+            DriverCam = pv.BotCam('DriverCam')
             DriverCam.input_stream = CameraServer.getVideo('DriverCam')
             DriverCam.imgBuf = np.zeros(shape=(config.height, config.width, 3), dtype=np.uint8)
             ImgT=threading.Thread(target=queueImage,args=(DriverCam,),daemon=True)
@@ -56,7 +71,7 @@ def customizeCamera(config):
             return DriverCam
         case 'FrontCam':
             print ('customizing FrontCam')
-            FrontCam = BotCam('FrontCam')
+            FrontCam = pv.BotCam('FrontCam')
             FrontCam.input_stream = CameraServer.getVideo('FrontCam')
             FrontCam.imgBuf = np.zeros(shape=(config.height, config.width, 3), dtype=np.uint8)
             ImgT=threading.Thread(target=queueImage,args=(FrontCam,),daemon=True)
@@ -64,7 +79,7 @@ def customizeCamera(config):
             return FrontCam
         case 'ClimbCam':
             print ('customizing ClimbCam')
-            ClimbCam = BotCam('ClimbCam')
+            ClimbCam = pv.BotCam('ClimbCam')
             ClimbCam.input_stream = CameraServer.getVideo('ClimbCam')
             ClimbCam.imgBuf = np.zeros(shape=(config.height, config.width, 3), dtype=np.uint8)
             ImgT=threading.Thread(target=queueImage,args=(ClimbCam,),daemon=True)
@@ -72,7 +87,7 @@ def customizeCamera(config):
             return ClimbCam
         case 'ExtraCam':
             print ('customizing ExtraCam')
-            ExtraCam = BotCam('ExtraCam')
+            ExtraCam = pv.BotCam('ExtraCam')
             ExtraCam.input_stream = CameraServer.getVideo('ExtraCam')
             ExtraCam.imgBuf = np.zeros(shape=(config.height, config.width, 3), dtype=np.uint8)
             ImgT=threading.Thread(target=queueImage,args=(ExtraCam,),daemon=True)
@@ -233,6 +248,17 @@ def startSwitchedCamera(config):
 
     return server
 
+def establish_topics():
+    global BotPos_tbl,pubRobotWorldX,pubRobotWorldY,pubRobotWorldR,pubHubRng,pubHubHdg,pubRobotFuel
+    BotPos_tbl     = ntinst.getTable("BotPos")
+    pubRobotWorldX = BotPos_tbl.getDoubleTopic("Robot_X").publish()
+    pubRobotWorldY = BotPos_tbl.getDoubleTopic("Robot_Y").publish()
+    pubRobotWorldR = BotPos_tbl.getDoubleTopic("Robot_Rot").publish()
+    pubHubRng      = BotPos_tbl.getDoubleTopic("Hub_Rng").publish()
+    pubHubHdg      = BotPos_tbl.getDoubleTopic("Hub_Hdg").publish()
+    pubRobotFuel   = BotPos_tbl.getDoubleTopic("Fuel_Level").publish()
+    return
+
 if __name__ == "__main__":
     if len(sys.argv) >= 2:
         configFile = sys.argv[1]
@@ -262,7 +288,7 @@ if __name__ == "__main__":
         ntinst.startClient4("Vision26")
         ntinst.setServer(IP)
         ntinst.startDSClient()
-
+    establish_topics()
     # start cameras
     # work around wpilibsuite/allwpilib#5055
     #CameraServer.setSize(CameraServer.kSize160x120)
@@ -278,7 +304,7 @@ if __name__ == "__main__":
     # My code starts. Buckle-up!
     #########################################################################
 
-    output_stream = CameraServer.putVideo("Well I'll be dipped!", 640, 480)
+    output_stream = CameraServer.putVideo("Overlay", 640, 480)
     options = apriltag.DetectorOptions(
         families      = "tag36h11",
         quad_decimate = 2,
@@ -292,34 +318,69 @@ if __name__ == "__main__":
     # loop forever
     counter = 300
     start = time.time()
+    ballCount = 0
     while True:
         #time.sleep(0.02)
         robotX, robotY, robotYaw, N = 0.0, 0.0,  0.0, 0
         for Cam in CamQs:
             try:
                 #frame = Cam.queue.pop()
-                frame = Cam.queue[0]       # non-destructive read
-                gray = cv2.cvtColor (frame, cv2.COLOR_BGR2GRAY)
-                results = detector.detect(gray)
-                if len(results) > 0:
-                    Cam.robotPose = pose(results,Cam)
-                    BotX, BotY = Cam.robotPose
-                    #print (Cam.usage,"X:",BotX,"   Y:",BotY)
-                    robotX += BotX
-                    robotY += BotY
-                    N += 1
-                else:
-                    continue
-                if Cam.usage == 'ClimbCam':
-                    output_stream.putFrame(frame)
-                counter -= 1
+                try:
+                    frame = Cam.queue[0]       # non-destructive read
+                    gray = cv2.cvtColor (frame, cv2.COLOR_BGR2GRAY)
+                    results = detector.detect(gray)
+                    if len(results) > 0:
+                        #Cam.robotPose = pv.pose(results,Cam)
+                        #BotX, BotY = Cam.robotPose
+                        ##print (Cam.usage,"X:",BotX,"   Y:",BotY)
+                        #robotX += BotX
+                        #robotY += BotY
+                        pv.pose(results,Cam)
+                        N += 1
+                        #print (Cam.x,Cam.y,Cam.z,degrees(Cam.yaw),degrees(Cam.yaw)%360)
+                        print (Cam.__dict__)
+                        print (Cam.__dict__.keys())
+                    else:
+                        continue
+                    if Cam.usage == 'DriverCam':
+                        try:
+                            #Display["SKEW"] = round(degrees(Cam.Skew),1)
+                            #Display["BOTX"] = round(BotX,1)
+                            #Display["YAW "] = round(degrees(Cam.yaw),1)
+                            Display["CAMX"] = round(Cam.x,1)
+                            Display["CAMY"] = round(Cam.y,1)
+                            Display["YAW "] = round(degrees(Cam.yaw)%360,1)
+                            overlay(frame,Display,Cam.width,Cam.height)
+                            output_stream.putFrame(frame)
+                        except Exception as e:
+                            print(e)
+                            pass
+                    counter -= 1
+                    if counter < 1:
+                        stop = time.time()
+                        counter = 300
+                        print (counter/(stop - start),'fps')
+                        start = stop
+                except:
+                    pass 
             except:
-                pass
-            if counter < 1:
-                stop = time.time()
-                counter = 300
-                print (counter/(stop - start),'fps')
-                start = stop
-        if N > 0:
-            print (f'Average          {robotX/N:>6.2f} {robotY/N:6.2f}')
-            print (' ')
+                pass 
+            if N > 0:
+                print (f'Average          {robotX/N:>6.2f} {robotY/N:6.2f}')
+                pubRobotWorldX.set(robotX/N)
+                pubRobotWorldY.set(robotY/N)
+                print (' ')
+        if ballCount > 3000:
+            pubRobotFuel.set(4)
+        elif ballCount > 2000:
+            pubRobotFuel.set(3)
+        elif ballCount > 1000:
+            pubRobotFuel.set(2)
+        elif ballCount > 0:
+            pubRobotFuel.set(1)
+        else:
+            pubRobotFuel.set(0)
+        ballCount += 1
+        if ballCount > 4000:
+            ballCount = 0
+        
