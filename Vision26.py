@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # $Source: /home/scrobotics/src/2026/RCS/Vision26.py,v $
-# $Revision: 1.2 $
-# $Date: 2026/01/26 03:31:59 $
+# $Revision: 1.3 $
+# $Date: 2026/02/13 17:59:27 $
 # $Author: scrobotics $
 
 # Copyright (c) FIRST and other WPILib contributors.
@@ -17,7 +17,6 @@ from collections import deque
 import threading
 import numpy as np
 from pprint import pprint
-#from PiggyVision26 import Webcam, BotCam, pose
 import PiggyVision26 as pv
 from math import degrees
 
@@ -47,6 +46,7 @@ def overlay(frame,Display,width,height):
                      cv2.FONT_HERSHEY_PLAIN, 3.0, (0,0,255), 3)
             row+=50
     except Exception as e:
+        print('overlay')
         print(e)
 
 def queueImage (cam):
@@ -301,7 +301,7 @@ if __name__ == "__main__":
         startSwitchedCamera(config)
 
     #########################################################################
-    # My code starts. Buckle-up!
+    # Our code starts. Buckle-up!
     #########################################################################
 
     output_stream = CameraServer.putVideo("Overlay", 640, 480)
@@ -321,7 +321,8 @@ if __name__ == "__main__":
     ballCount = 0
     while True:
         #time.sleep(0.02)
-        robotX, robotY, robotYaw, N = 0.0, 0.0,  0.0, 0
+        robotX, robotY, robotYaw = 0.0, 0.0,  0.0
+        camera_estimates = []
         for Cam in CamQs:
             try:
                 #frame = Cam.queue.pop()
@@ -330,46 +331,45 @@ if __name__ == "__main__":
                     gray = cv2.cvtColor (frame, cv2.COLOR_BGR2GRAY)
                     results = detector.detect(gray)
                     if len(results) > 0:
-                        #Cam.robotPose = pv.pose(results,Cam)
-                        #BotX, BotY = Cam.robotPose
-                        ##print (Cam.usage,"X:",BotX,"   Y:",BotY)
-                        #robotX += BotX
-                        #robotY += BotY
-                        pv.pose(results,Cam)
-                        N += 1
-                        #print (Cam.x,Cam.y,Cam.z,degrees(Cam.yaw),degrees(Cam.yaw)%360)
-                        print (Cam.__dict__)
-                        print (Cam.__dict__.keys())
+                        estimate = pv.pose(results,Cam)
+                        if estimate is not None:
+                            camera_estimates.append(estimate)
                     else:
                         continue
-                    if Cam.usage == 'DriverCam':
-                        try:
-                            #Display["SKEW"] = round(degrees(Cam.Skew),1)
-                            #Display["BOTX"] = round(BotX,1)
-                            #Display["YAW "] = round(degrees(Cam.yaw),1)
-                            Display["CAMX"] = round(Cam.x,1)
-                            Display["CAMY"] = round(Cam.y,1)
-                            Display["YAW "] = round(degrees(Cam.yaw)%360,1)
-                            overlay(frame,Display,Cam.width,Cam.height)
-                            output_stream.putFrame(frame)
-                        except Exception as e:
-                            print(e)
-                            pass
+                    #if Cam.usage == 'DriverCam':
+                    #    try:
+                    #        Display["BOTX"] = round(robot_world[0].item(),1)
+                    #        Display["BOTY"] = round(robot_world[1].item(),1)
+                    #        Display["YAW "] = round(robot_yaw,1)
+                    #        overlay(frame,Display,Cam.width,Cam.height)
+                    #        output_stream.putFrame(frame)
+                    #    except Exception as e:
+                    #        print('ovrlay call')
+                    #        print(e)
+                    #        pass
                     counter -= 1
                     if counter < 1:
                         stop = time.time()
                         counter = 300
                         print (counter/(stop - start),'fps')
                         start = stop
-                except:
+                except Exception as e:
+                    print ('frame processing')
+                    print (e)
                     pass 
             except:
                 pass 
-            if N > 0:
-                print (f'Average          {robotX/N:>6.2f} {robotY/N:6.2f}')
-                pubRobotWorldX.set(robotX/N)
-                pubRobotWorldY.set(robotY/N)
-                print (' ')
+        if len(camera_estimates) > 0:
+            robot_xyz, robot_yaw = pv.fuse_robot_pose_multicam([
+                (e.robot_xyz, e.robot_yaw, e.avg_dist, e.num_tags)
+                for e in camera_estimates ])
+            Display["BOTX"] = round(robot_xyz[0].item(),1)
+            Display["BOTY"] = round(robot_xyz[1].item(),1)
+            Display["YAW "] = round(robot_yaw,1)
+            overlay(frame,Display,Cam.width,Cam.height)
+            output_stream.putFrame(frame)
+            print ('fused:', round(robot_xyz[0],1), round(robot_xyz[1],1), round(robot_yaw,1))
+
         if ballCount > 3000:
             pubRobotFuel.set(4)
         elif ballCount > 2000:
