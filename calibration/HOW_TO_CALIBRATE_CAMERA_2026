@@ -26,7 +26,7 @@ PICK A RESOLUTION:
 
   v4l2-ctl -d /dev/video2 --list-formats-ext |\
   sed -n '/Size/{s/^.* //p}' |\
-  sort -k1,1n -u 
+  sort --tx k1,1n -k2,2n -u 
 
   You'll get a list that looks like this:
   160x120
