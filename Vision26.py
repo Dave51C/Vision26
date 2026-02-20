@@ -366,9 +366,13 @@ if __name__ == "__main__":
             Display["BOTX"] = round(robot_xyz[0].item(),1)
             Display["BOTY"] = round(robot_xyz[1].item(),1)
             Display["YAW "] = round(robot_yaw,1)
+            pubRobotWorldX.set(robot_xyz[0].item())
+            pubRobotWorldY.set(robot_xyz[1].item())
+            pubRobotWorldR.set(robot_yaw)
+
             overlay(frame,Display,Cam.width,Cam.height)
             output_stream.putFrame(frame)
-            print ('fused:', round(robot_xyz[0],1), round(robot_xyz[1],1), round(robot_yaw,1))
+            #print ('fused:', round(robot_xyz[0],1), round(robot_xyz[1],1), round(robot_yaw,1))
 
         if ballCount > 3000:
             pubRobotFuel.set(4)

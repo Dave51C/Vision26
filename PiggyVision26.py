@@ -25,11 +25,12 @@ class DetectedTags:
         self.tvec = tvec
 
 class PoseEstimate:
-   def __init__(self, robot_xyz, robot_yaw, avg_dist, num_tags):
-       self.robot_xyz = robot_xyz
-       self.robot_yaw = robot_yaw
-       self.avg_dist = avg_dist
-       self.num_tags = num_tags
+    def __init__(self, robot_xyz, robot_yaw, avg_dist, num_tags, timestamp):
+        self.robot_xyz = robot_xyz
+        self.robot_yaw = robot_yaw
+        self.avg_dist = avg_dist
+        self.num_tags = num_tags
+        self.timestamp = timestamp
 
 class Webcam ():
     def __init__(self, usage):
@@ -243,6 +244,7 @@ def fuse_camera_pose_multitag(detections, TAG_DB):
 
     # final fused position
     cam_world_fused = weighted_pos_sum / weight_sum
+    #print (cam_world_fused[0], cam_world_fused[1])
 
     # final fused yaw
     fused_yaw = np.rad2deg(np.arctan2(yaw_vec_sum[1], yaw_vec_sum[0]))
@@ -330,7 +332,8 @@ TAG_CORNERS = {
 
 def pose (results,Cam):
     from math import atan, atan2, asin, degrees
-    from time import sleep
+    import time
+    frame_timestamp = time.time()
     distances     = []
     detected_tags = [] # Will collect all the tag IDs seen by this camera plus their rvecs & tvecs.
     for r in results:
@@ -342,20 +345,20 @@ def pose (results,Cam):
             dist = np.linalg.norm(tvec)
             distances.append(dist)
             detected_tags.append (DetectedTags(r.tag_id, rvec, tvec))
+            print (f'{Cam.usage:10s}  tag:{r.tag_id:>2d}  X:{tvec[0].item():>6.1f}  Y:{tvec[1].item():>6.1f}  Z:{tvec[2].item():>6.1f}')
         except Exception as e:
             print ('pv.pose error')
             print (e)
-            sleep (1)
             return None,None
     cam_world, cam_yaw     = fuse_camera_pose_multitag (detected_tags, TAG_CORNERS)
     #robot_world, robot_yaw = robot_pose_from_camera(cam_world, cam_yaw, Cam.localXYZ, Cam.localYaw)
     robot_xyz,   robot_yaw = robot_pose_from_camera(cam_world, cam_yaw, Cam.localXYZ, Cam.localYaw)
     avg_dist               = np.mean(distances)
     num_tags               = len(distances)
-    #print (f'{Cam.usage:10s} {round(cam_world[0],1):5.1f} {round(cam_world[1],1):5.1f} {round(cam_yaw,1):4.1f}')
+    #print (f'{Cam.usage:10s} {round(cam_world[0],1):>5.1f} {round(cam_world[1],1):5>.1f} {round(cam_yaw,1):4>.1f}')
     #print ("robot     ",round(robot_xyz[0],1),round(robot_xyz[1],1),round(robot_yaw,1))
-    #print ()
-    return PoseEstimate(robot_xyz, robot_yaw, avg_dist, num_tags)
+    print ()
+    return PoseEstimate(robot_xyz, robot_yaw, avg_dist, num_tags, frame_timestamp)
     #return (robot_world, robot_yaw)
 
 def rotate(px, py, ox, oy, angle, Integer=False):
