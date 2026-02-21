@@ -10,12 +10,12 @@ import cv2
 TAG_SIZE = 6.5
 HALF = TAG_SIZE / 2.0
 
-# AprilTag local coordinate frame (WPILib-compatible)
+# NOTE: This is NOT the WPILib order
 TAG_OBJECT_POINTS = np.array([
-    [-HALF,  HALF, 0.0],   # top-left
-    [ HALF,  HALF, 0.0],   # top-right
-    [ HALF, -HALF, 0.0],   # bottom-right
     [-HALF, -HALF, 0.0],   # bottom-left
+    [ HALF, -HALF, 0.0],   # bottom-right
+    [ HALF,  HALF, 0.0],   # top-right
+    [-HALF,  HALF, 0.0],   # top-left
 ], dtype=np.float32)
 
 class DetectedTags:
@@ -339,13 +339,20 @@ def pose (results,Cam):
     for r in results:
         try:
             img_pts = r.corners                # This is a hack that re-sequences
-            test_img_pts = img_pts[[0,1,2,3]]  # the r.corners values. Why? Because.
-            ret, rvec, tvec = cv2.solvePnP(TAG_OBJECT_POINTS,test_img_pts,
+            test_img_pts = img_pts[[3,2,1,0]]  # the r.corners values. Why? Because.
+            #test_img_pts = img_pts[[2,3,0,1]]  # the r.corners values. Why? Because.
+            #test_img_pts = img_pts[[0,1,2,3]]  # the r.corners values. Why? Because.
+            ret, rvec, tvec = cv2.solvePnP(TAG_OBJECT_POINTS,r.corners,
                         Cam.mtx,Cam.dist, cv2.SOLVEPNP_IPPE_SQUARE)
+            #rotMat,_ = cv2.Rodrigues(rvec)
+            #rotMatW  = rotMat.T
+            #camYaw   = np.degrees(np.arctan2(rotMatW[1,0], rotMatW[0,0]))
+            #camYaw    = np.degrees(rvec[2].item())
             dist = np.linalg.norm(tvec)
             distances.append(dist)
             detected_tags.append (DetectedTags(r.tag_id, rvec, tvec))
             print (f'{Cam.usage:10s}  tag:{r.tag_id:>2d}  X:{tvec[0].item():>6.1f}  Y:{tvec[1].item():>6.1f}  Z:{tvec[2].item():>6.1f}')
+            print (f'{Cam.usage:10s}  {tvec}')
         except Exception as e:
             print ('pv.pose error')
             print (e)
