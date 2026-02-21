@@ -42,11 +42,13 @@ device   = args.device
 
 cap      = open_stream(device,width,height)
 SEQ      = startnum
+DELAY    = 20
 LAST     = startnum + shots
 while SEQ < LAST:
-    T = 30
+    T = DELAY
     while T > 0:
         frame = fetch_frame(cap)
+        frame = cv2.flip(frame, 1)
         cv2.polylines(frame, [FIVE], False, RED, 20)
         cv2.polylines(frame, [FIVE], False, GREEN, 3)
         if width > 800:
@@ -59,9 +61,10 @@ while SEQ < LAST:
             cv2.imshow   ('counter',frame)
         cv2.waitKey(1)
         T -= 1
-    T = 30
+    T = DELAY
     while T > 0:
         frame = fetch_frame(cap)
+        frame = cv2.flip(frame, 1)
         cv2.polylines(frame, [FOUR], False, RED, 20)
         cv2.polylines(frame, [FOUR], False, GREEN, 3)
         if width > 800:
@@ -74,9 +77,10 @@ while SEQ < LAST:
             cv2.imshow   ('counter',frame)
         cv2.waitKey(1)
         T -= 1
-    T = 30
+    T = DELAY
     while T > 0:
         frame = fetch_frame(cap)
+        frame = cv2.flip(frame, 1)
         cv2.polylines(frame, [THREE], False, RED, 20)
         cv2.polylines(frame, [THREE], False, GREEN, 3)
         if width > 800:
@@ -89,9 +93,10 @@ while SEQ < LAST:
             cv2.imshow   ('counter',frame)
         cv2.waitKey(1)
         T -= 1
-    T = 30
+    T = DELAY
     while T > 0:
         frame = fetch_frame(cap)
+        frame = cv2.flip(frame, 1)
         cv2.polylines(frame, [TWO], False, RED, 20)
         cv2.polylines(frame, [TWO], False, GREEN, 3)
         if width > 800:
@@ -104,9 +109,10 @@ while SEQ < LAST:
             cv2.imshow   ('counter',frame)
         cv2.waitKey(1)
         T -= 1
-    T = 30
+    T = DELAY
     while T > 0:
         frame = fetch_frame(cap)
+        frame = cv2.flip(frame, 1)
         cv2.polylines(frame, [ONE], False, RED, 20)
         cv2.polylines(frame, [ONE], False, GREEN, 3)
         if width > 800:

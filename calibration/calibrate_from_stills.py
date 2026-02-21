@@ -57,7 +57,6 @@ for fname in images:
         width  = img.shape[1]
     else:
         assert _img_shape == img.shape[:2], "All images must share the same size."
-
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
     # Find the chess board corners
     ret, corners = cv.findChessboardCorners(gray, (9,6), None)
@@ -80,3 +79,17 @@ cv.destroyAllWindows()
 
 ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
 write_json (args.name,width,height,mtx,dist)
+total_error = 0
+for i in range(len(objpoints)):
+    imgpoints2, _ = cv.projectPoints(
+        objpoints[i],
+        rvecs[i],
+        tvecs[i],
+        mtx,
+        dist
+    )
+    error = cv.norm(imgpoints[i], imgpoints2, cv.NORM_L2) / len(imgpoints2)
+    total_error += error
+
+mean_error = total_error / len(objpoints)
+print("Mean reprojection error:", mean_error)
