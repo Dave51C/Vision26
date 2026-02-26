@@ -320,12 +320,10 @@ if __name__ == "__main__":
     start = time.time()
     ballCount = 0
     while True:
-        #time.sleep(0.02)
         robotX, robotY, robotYaw = 0.0, 0.0,  0.0
         camera_estimates = []
         for Cam in CamQs:
             try:
-                #frame = Cam.queue.pop()
                 try:
                     frame = Cam.queue[0]       # non-destructive read
                     gray = cv2.cvtColor (frame, cv2.COLOR_BGR2GRAY)
@@ -336,17 +334,6 @@ if __name__ == "__main__":
                             camera_estimates.append(estimate)
                     else:
                         continue
-                    #if Cam.usage == 'DriverCam':
-                    #    try:
-                    #        Display["BOTX"] = round(robot_world[0].item(),1)
-                    #        Display["BOTY"] = round(robot_world[1].item(),1)
-                    #        Display["YAW "] = round(robot_yaw,1)
-                    #        overlay(frame,Display,Cam.width,Cam.height)
-                    #        output_stream.putFrame(frame)
-                    #    except Exception as e:
-                    #        print('ovrlay call')
-                    #        print(e)
-                    #        pass
                     counter -= 1
                     if counter < 1:
                         stop = time.time()
@@ -361,7 +348,7 @@ if __name__ == "__main__":
                 pass 
         if len(camera_estimates) > 0:
             robot_xyz, robot_yaw = pv.fuse_robot_pose_multicam([
-                (e.robot_xyz, e.robot_yaw, e.avg_dist, e.num_tags)
+                (e.robot_xyz, e.robot_yaw, e.avg_distance, e.num_tags)
                 for e in camera_estimates ])
             Display["BOTX"] = round(robot_xyz[0].item(),1)
             Display["BOTY"] = round(robot_xyz[1].item(),1)
