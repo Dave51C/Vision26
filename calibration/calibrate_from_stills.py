@@ -9,19 +9,20 @@ import argparse
 from datetime import datetime
 
 
-def write_json (name,width,height,intrinsic,distortion):
+def write_json (name,width,height,intrinsic,distortion,mean_error):
     Cam_Mtx = intrinsic
     Cam_Dist = distortion
     # I added "created" because we're getting waaaay too many copies floating around.
     NOW = "{:%Y-%m-%d:%H:%M:%S}".format(datetime.now())
-    JSON = '{\n   "created": "' + NOW + '",\n'
-    JSON = JSON + '   "name"   : "{0}_{1}x{2}",\n'.format(name,width,height)
-    JSON = JSON + '   "width"  : {0},\n   "height" : {1},\n'.format(width,height)
-    JSON = JSON + '   "mtx"    :\n'
+    JSON = '{\n   "created"  : "' + NOW + '",\n'
+    JSON = JSON + '   "name"     : "{0}_{1}x{2}",\n'.format(name,width,height)
+    JSON = JSON + '   "width"    : {0},\n   "height"   : {1},\n'.format(width,height)
+    JSON = JSON + '   "meanError": {0},\n'.format(mean_error)
+    JSON = JSON + '   "mtx"      :\n'
     JSON = JSON + '   [[{0}, {1}, {2}],\n'.format(Cam_Mtx[0,0],Cam_Mtx[0,1],Cam_Mtx[0,2])
     JSON = JSON + '    [{0}, {1}, {2}],\n'.format(Cam_Mtx[1,0],Cam_Mtx[1,1],Cam_Mtx[1,2])
     JSON = JSON + '    [{0}, {1}, {2}]],\n'.format(Cam_Mtx[2,0],Cam_Mtx[2,1],Cam_Mtx[2,2])
-    JSON = JSON + '   "dist"   :\n'
+    JSON = JSON + '   "dist"     :\n'
     JSON = JSON + '   [{0}, {1}, {2},'.format(Cam_Dist[0,0],Cam_Dist[0,1],Cam_Dist[0,2])
     JSON = JSON + ' {0}, {1}],\n'.format(Cam_Dist[0,3],Cam_Dist[0,4])
     JSON = JSON + '   "FudgeOffset": 0.0,\n'
@@ -78,7 +79,6 @@ for fname in images:
 cv.destroyAllWindows()
 
 ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
-write_json (args.name,width,height,mtx,dist)
 total_error = 0
 for i in range(len(objpoints)):
     imgpoints2, _ = cv.projectPoints(
@@ -93,3 +93,5 @@ for i in range(len(objpoints)):
 
 mean_error = total_error / len(objpoints)
 print("Mean reprojection error:", mean_error)
+
+write_json (args.name,width,height,mtx,dist,round(mean_error,5))
