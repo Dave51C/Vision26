@@ -117,8 +117,6 @@ class BotCam (Webcam):
     def __init__(self, usage):
         super().__init__(usage)
         self.usage = usage
-        self.prev_rvec = None
-        self.prev_tvec = None
         BotCam.list.append(self)    # Keep a list of cameras on bot
 
 def tag_pose_world(tag_xyz, tag_yaw_deg):
@@ -284,34 +282,56 @@ def fuse_camera_pose_multitag(detections, TAG_DB, cam_height):
         print (e)
         return None, None
 
-def fuse_robot_pose_multicam(camera_results):
-    """
-    camera_results = list of tuples:
-        (robot_xyz, robot_yaw, avg_tag_distance, num_tags)
-    """
+def fuse_robot_pose_multicam(robot_estimates):
     try:
-        pos_sum = np.zeros(3)
+        if len(robot_estimates) == 0:
+            return None
+    
+        weighted_pos_sum = np.zeros(2)
         yaw_vec_sum = np.zeros(2)
+        weighted_distance_sum = 0.0
         weight_sum = 0.0
+        timestamps = []
     
-        for robot_xyz, robot_yaw, avg_distance, num_tags in camera_results:
+        for est in robot_estimates:
     
-            w = num_tags / (avg_distance * avg_distance)
+            if est.avg_distance is None or est.num_tags == 0:
+                continue
     
-            pos_sum += w * np.array(robot_xyz)
+            w = (est.num_tags) / (est.avg_distance ** 2)
+    
+            weighted_pos_sum += w * np.array([ est.robot_xyz[0], est.robot_xyz[1] ])
+    
+            yaw_rad = np.deg2rad(est.robot_yaw)
+    
+            yaw_vec_sum += w * np.array([ np.cos(yaw_rad), np.sin(yaw_rad) ])
+            weighted_distance_sum += w * est.avg_distance
+    
             weight_sum += w
+            timestamps.append(est.timestamp)
     
-            yaw_rad = np.deg2rad(robot_yaw)
-            yaw_vec_sum += w * np.array([np.cos(yaw_rad), np.sin(yaw_rad)])
+        if weight_sum == 0:
+            return None
     
-        fused_pos = pos_sum / weight_sum
-        fused_yaw = np.rad2deg(np.arctan2(yaw_vec_sum[1], yaw_vec_sum[0]))
-
-        return fused_pos, fused_yaw
+        fused_xy = weighted_pos_sum / weight_sum
+    
+        fused_yaw = np.rad2deg( np.arctan2( yaw_vec_sum[1], yaw_vec_sum[0]))
+    
+        fused_avg_distance = weighted_distance_sum / weight_sum
+    
+        fused_timestamp = max(timestamps)
+    
+        return PoseEstimate(
+            robot_xyz=np.array([fused_xy[0], fused_xy[1], 0.0]),
+            robot_yaw=fused_yaw,
+            avg_distance=fused_avg_distance,
+            num_tags=sum(est.num_tags for est in robot_estimates),
+            timestamp=fused_timestamp
+        )
     except Exception as e:
         print ('fuse_robot_pose_multicam')
         print (e)
-        return None, None
+        return None
 
 # These are the tags for competition. Restore them when neeed.
 """
@@ -377,8 +397,8 @@ def pose (results,Cam):
     detected_tags = [] # Will collect all the tag IDs seen by this camera plus their rvecs & tvecs.
     for r in results:
         try:
-            FLAGS = cv2.SOLVEPNP_IPPE_SQUARE
-            ret,rvec,tvec = cv2.solvePnP(TAG_OBJECT_POINTS,r.corners,Cam.mtx,Cam.dist,flags=FLAGS)
+            ret, rvec, tvec = cv2.solvePnP(TAG_OBJECT_POINTS,r.corners,
+                        Cam.mtx,Cam.dist, flags=cv2.SOLVEPNP_IPPE_SQUARE)
             distance = np.linalg.norm(tvec)
             distances.append(distance)
             detected_tags.append (DetectedTags(r.tag_id, rvec, tvec))
@@ -391,17 +411,11 @@ def pose (results,Cam):
     camera_world, camera_yaw = fuse_camera_pose_multitag (
                                detected_tags, TAG_CORNERS, Cam.localXYZ[2])
     robot_xyz, robot_yaw   = camera_to_robot_world (camera_world, camera_yaw, Cam)
-    #print("camera world:", camera_world)
-    #print("camera yaw:", camera_yaw)
-    #print("robot world:", robot_xyz)
-    #print("robot yaw:", robot_yaw)
     #show_debugging_info()
 
     avg_distance           = np.mean(distances)
     num_tags               = len(distances)
     return PoseEstimate(robot_xyz, robot_yaw, avg_distance, num_tags, frame_timestamp)
-    #return robot_xyz, robot_yaw
-    #return PoseEstimate(None, None, None, None, None)
 
 def rotate(px, py, ox, oy, angle, Integer=False):
     """
