@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # $Source: /home/scrobotics/src/2026/RCS/Vision26.py,v $
-# $Revision: 1.3 $
-# $Date: 2026/02/13 17:59:27 $
+# $Revision: 1.4 $
+# $Date: 2026/03/01 07:03:56 $
 # $Author: scrobotics $
 
 # Copyright (c) FIRST and other WPILib contributors.
@@ -347,15 +347,17 @@ if __name__ == "__main__":
             except:
                 pass 
         if len(camera_estimates) > 0:
-            robot_xyz, robot_yaw = pv.fuse_robot_pose_multicam([
-                (e.robot_xyz, e.robot_yaw, e.avg_distance, e.num_tags)
-                for e in camera_estimates ])
-            Display["BOTX"] = round(robot_xyz[0].item(),1)
-            Display["BOTY"] = round(robot_xyz[1].item(),1)
-            Display["YAW "] = round(robot_yaw,1)
-            pubRobotWorldX.set(robot_xyz[0].item())
-            pubRobotWorldY.set(robot_xyz[1].item())
-            pubRobotWorldR.set(robot_yaw)
+            fused_estimate = pv.fuse_robot_pose_multicam(camera_estimates)
+            #for e in camera_estimates:
+            #    print('camera:',vars(e))
+            #print('fused:',vars(fused_estimate))
+            #print ()
+            Display["BOTX"] = round(fused_estimate.robot_xyz[0].item(),1)
+            Display["BOTY"] = round(fused_estimate.robot_xyz[1].item(),1)
+            Display["YAW "] = round(fused_estimate.robot_yaw,1)
+            pubRobotWorldX.set(fused_estimate.robot_xyz[0].item())
+            pubRobotWorldY.set(fused_estimate.robot_xyz[1].item())
+            pubRobotWorldR.set(fused_estimate.robot_yaw)
 
             overlay(frame,Display,Cam.width,Cam.height)
             output_stream.putFrame(frame)
