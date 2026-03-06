@@ -33,16 +33,18 @@ parser.add_argument("--height",   type=int, default=480, help="default 480")
 parser.add_argument("--shots",    type=int, default=25,  help="default 25")
 parser.add_argument("--startnum", type=int, default=0,   help="default 0")
 parser.add_argument("--device",   type=int, default=0,   help="default 0")
+parser.add_argument("--delay",   type=int, default=0,   help="default 20")
+
 args     = parser.parse_args()
 width    = args.width
 height   = args.height
 shots    = args.shots
 startnum = args.startnum
 device   = args.device
+DELAY    = args.delay
 
 cap      = open_stream(device,width,height)
 SEQ      = startnum
-DELAY    = 20
 LAST     = startnum + shots
 while SEQ < LAST:
     T = DELAY
