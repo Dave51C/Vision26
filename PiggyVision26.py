@@ -1,6 +1,6 @@
 # $Source: /home/scrobotics/src/2026/RCS/PiggyVision26.py,v $
-# $Revision: 3.2 $
-# $Date: 2026/02/26 16:58:28 $
+# $Revision: 3.4 $
+# $Date: 2026/03/06 01:51:04 $
 # $Author: scrobotics $
 import json
 import math
@@ -20,20 +20,20 @@ TAG_OBJECT_POINTS = np.array([
 
 class DetectedTags:
     def __init__(self, id, rvec, tvec):
-        self.id = id
+        self.id   = id
         self.rvec = rvec
         self.tvec = tvec
 
 class PoseEstimate:
     def __init__(self, robot_xyz, robot_yaw, avg_distance, num_tags, timestamp):
-        self.robot_xyz = robot_xyz
-        self.robot_yaw = robot_yaw
+        self.robot_xyz    = robot_xyz
+        self.robot_yaw    = robot_yaw
         self.avg_distance = avg_distance
-        self.num_tags = num_tags
-        self.timestamp = timestamp
+        self.num_tags     = num_tags
+        self.timestamp    = timestamp
 
 class Webcam ():
-    def __init__(self, usage):
+    def __init__(self, name):
         import json
         import numpy as np
         from collections import deque
@@ -51,54 +51,35 @@ class Webcam ():
             except:
                 print ("Can't find a usable frc.json")
 
-        cam_entry = None
         for cam in frc["cameras"]:
-            for prop in cam["properties"]:
-                if prop["name"] == "usage" and prop["value"] == usage:
-                    cam_entry = cam
-                    self.CameraName = cam['name']
-                    self.width      = cam['width']
-                    self.height     = cam['height']
-                    self.queue      = deque(maxlen=1)
-                    self.buffer=np.zeros(shape=(self.height,self.width,3),dtype=np.uint8)
-                    paramFile       = f"{self.CameraName}.json"
-                    try:
-                        with open(paramFile,'r') as pfile:
-                            j = json.load(pfile)
-                    except:
-                        print("Can't open", paramFile)
-                    try:
-                        self.mtx  = np.array(j['mtx'])
-                    except:
-                        print ("Can't set mtx")
-                    try:
-                        self.dist = np.array(j['dist'])
-                    except:
-                        print ("Can't set dist")
-                    XYZPY = "./"+usage+".json"   # XYZPY: X,Y,Z pitch & yaw
-                    try:
-                        with open (XYZPY,'r') as file:
-                            try:
-                                place = json.load(file)
-                                #self.localX   = place['localX']
-                                #self.localY   = place['localY']
-                                #self.localZ   = place['localZ']
-                                self.localXYZ = np.array([place['localX'],place['localY'],place['localZ']])
-                                self.pitch    = place['pitch']
-                                self.localYaw = place['yaw']
-                            except:
-                                 print ("Can't load",XYZPY,"Format error?")
-                    except:
-                        print ("Can't open",XYZPY)
-                    self.robotPose = None
-                    self.yaw       = None  # Re-set for each tag. Changes like crazy.
-                    self.x         = 0.0
-                    self.y         = 0.0
-                    self.z         = 0.0
-                    self.Skew      = None  # Re-set for each tag. Changes like crazy.
-                    break
-            if cam_entry:
-                break
+            self.CameraName = cam['name']
+            self.width      = cam['width']
+            self.height     = cam['height']
+            self.queue      = deque(maxlen=1)
+            self.buffer=np.zeros(shape=(self.height,self.width,3),dtype=np.uint8)
+            paramFile       = f'{cam["name"]}.json'
+            try:
+                with open(paramFile,'r') as pfile:
+                    j = json.load(pfile)
+            except:
+                print("Can't open", paramFile)
+            try:
+                self.mtx  = np.array(j['mtx'])
+            except:
+                print ("Can't set mtx")
+            try:
+                self.dist = np.array(j['dist'])
+            except:
+                print ("Can't set dist")
+            self.localXYZ = np.array([j['localX'],j['localY'],j['localZ']])
+            self.pitch    = j['pitch']
+            self.localYaw = j['yaw']
+            self.robotPose = None
+            self.yaw       = None  # Re-set for each tag. Changes like crazy.
+            self.x         = 0.0
+            self.y         = 0.0
+            self.z         = 0.0
+            break
 
 class BotCam (Webcam):
     """
@@ -114,9 +95,9 @@ class BotCam (Webcam):
     points forward, 90 points left, 180 points backward and 270 points right.
     """
     list = []
-    def __init__(self, usage):
-        super().__init__(usage)
-        self.usage = usage
+    def __init__(self, name):
+        super().__init__(name)
+        self.name = name
         BotCam.list.append(self)    # Keep a list of cameras on bot
 
 def tag_pose_world(tag_xyz, tag_yaw_deg):
@@ -389,7 +370,7 @@ TAG_CORNERS = {
 
 def pose (results,Cam):
     def show_debugging_info():
-        print (f'{Cam.usage:>10s},{r.tag_id:>2d},tag_world={tag_xyz},tag_yaw_deg={tag_yaw_deg}, rvec={rvec},\ntvec={tvec},\ncamera_world={camera_world},camera_yaw={camera_yaw},\nrobot_world={robot_xyz},robot_yaw={robot_yaw}\n\n')
+        print (f'{Cam.name:>10s},{r.tag_id:>2d},tag_world={tag_xyz},tag_yaw_deg={tag_yaw_deg}, rvec={rvec},\ntvec={tvec},\ncamera_world={camera_world},camera_yaw={camera_yaw},\nrobot_world={robot_xyz},robot_yaw={robot_yaw}\n\n')
     from math import atan, atan2, asin, degrees
     import time
     frame_timestamp = time.time()
@@ -434,14 +415,11 @@ def rotate(px, py, ox, oy, angle, Integer=False):
 
 if __name__ == "__main__":
     from pprint import pprint
-    DriverCam = BotCam("DriverCam")
-    print(DriverCam.__dict__)
-    print(DriverCam.__dict__.keys())
-    ClimbCam  = BotCam("ClimbCam")
-    #pprint(DriverCam.__dict__)
-    #pprint(ClimbCam.__dict__)
-    #pprint(DriverCam.mtx)
-    #pprint(ClimbCam.mtx)
+    camList = ["NorthCam","SouthCam","EastCam","WestCam"]
+    for camera in camList:
+        BotCam(camera)
+    #print(SouthCam.__dict__)
+    #print(SouthCam.__dict__.keys())
     for item in BotCam.list:
-        if item.usage == 'DriverCam':
-            print (item.usage)
+        print (item.name)
+        print (item.__dict__)
