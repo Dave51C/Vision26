@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # $Source: /home/scrobotics/src/2026/RCS/Vision26.py,v $
-# $Revision: 1.4 $
-# $Date: 2026/03/01 07:03:56 $
+# $Revision: 1.5 $
+# $Date: 2026/03/06 01:53:10 $
 # $Author: scrobotics $
 
 # Copyright (c) FIRST and other WPILib contributors.
@@ -51,50 +51,50 @@ def overlay(frame,Display,width,height):
 
 def queueImage (cam):
     import apriltag
-    print ("Queueing ",cam.usage)
+    print ("Queueing ",cam.name)
     while True:
         frame_time, input_img = cam.input_stream.grabFrame(cam.imgBuf)
-        #print (cam.usage,frame_time)
+        #print (cam.name,frame_time)
         cam.queue.append(input_img)
 
 def customizeCamera(config):
     # Create queue
-    camQ = config.usage
-    match config.usage:
-        case 'DriverCam':
-            print ('customizing DriverCam')
-            DriverCam = pv.BotCam('DriverCam')
-            DriverCam.input_stream = CameraServer.getVideo('DriverCam')
-            DriverCam.imgBuf = np.zeros(shape=(config.height, config.width, 3), dtype=np.uint8)
-            ImgT=threading.Thread(target=queueImage,args=(DriverCam,),daemon=True)
+    camQ = config.name
+    match config.name:
+        case 'NorthCam':
+            print ('customizing NorthCam')
+            NorthCam = pv.BotCam('NorthCam')
+            NorthCam.input_stream = CameraServer.getVideo('NorthCam')
+            NorthCam.imgBuf = np.zeros(shape=(config.height, config.width, 3), dtype=np.uint8)
+            ImgT=threading.Thread(target=queueImage,args=(NorthCam,),daemon=True)
             ImgT.start()
-            return DriverCam
-        case 'FrontCam':
-            print ('customizing FrontCam')
-            FrontCam = pv.BotCam('FrontCam')
-            FrontCam.input_stream = CameraServer.getVideo('FrontCam')
-            FrontCam.imgBuf = np.zeros(shape=(config.height, config.width, 3), dtype=np.uint8)
-            ImgT=threading.Thread(target=queueImage,args=(FrontCam,),daemon=True)
+            return NorthCam
+        case 'SouthCam':
+            print ('customizing SouthCam')
+            SouthCam = pv.BotCam('SouthCam')
+            SouthCam.input_stream = CameraServer.getVideo('SouthCam')
+            SouthCam.imgBuf = np.zeros(shape=(config.height, config.width, 3), dtype=np.uint8)
+            ImgT=threading.Thread(target=queueImage,args=(SouthCam,),daemon=True)
             ImgT.start()
-            return FrontCam
-        case 'ClimbCam':
-            print ('customizing ClimbCam')
-            ClimbCam = pv.BotCam('ClimbCam')
-            ClimbCam.input_stream = CameraServer.getVideo('ClimbCam')
-            ClimbCam.imgBuf = np.zeros(shape=(config.height, config.width, 3), dtype=np.uint8)
-            ImgT=threading.Thread(target=queueImage,args=(ClimbCam,),daemon=True)
+            return SouthCam
+        case 'EastCam':
+            print ('customizing EastCam')
+            EastCam = pv.BotCam('EastCam')
+            EastCam.input_stream = CameraServer.getVideo('EastCam')
+            EastCam.imgBuf = np.zeros(shape=(config.height, config.width, 3), dtype=np.uint8)
+            ImgT=threading.Thread(target=queueImage,args=(EastCam,),daemon=True)
             ImgT.start()
-            return ClimbCam
-        case 'ExtraCam':
-            print ('customizing ExtraCam')
-            ExtraCam = pv.BotCam('ExtraCam')
-            ExtraCam.input_stream = CameraServer.getVideo('ExtraCam')
-            ExtraCam.imgBuf = np.zeros(shape=(config.height, config.width, 3), dtype=np.uint8)
-            ImgT=threading.Thread(target=queueImage,args=(ExtraCam,),daemon=True)
+            return EastCam
+        case 'WestCam':
+            print ('customizing WestCam')
+            WestCam = pv.BotCam('WestCam')
+            WestCam.input_stream = CameraServer.getVideo('WestCam')
+            WestCam.imgBuf = np.zeros(shape=(config.height, config.width, 3), dtype=np.uint8)
+            ImgT=threading.Thread(target=queueImage,args=(WestCam,),daemon=True)
             ImgT.start()
-            return ExtraCam
+            return WestCam
         case _:
-            print ('Unknown camera usage:',config.usage)
+            print ('Unknown camera name:',config.name)
 
 def parseError(str):
     """Report parse error."""
@@ -118,7 +118,7 @@ def readCameraConfig(config):
         parseError("camera '{}': could not read path".format(cam.name))
         return False
 
-    cam.usage  = config["properties"][0]["value"]
+    #cam.usage  = config["properties"][0]["value"]
     cam.height = config["height"]
     cam.width  = config["width"]
 
@@ -206,9 +206,8 @@ def readConfig():
 
 def startCamera(config):
     """Start running the camera."""
-    print("Starting camera '{}' on {}".format(config.usage, config.path))
-    #camera = UsbCamera(config.name, config.path)
-    camera = UsbCamera(config.usage, config.path)
+    print("Starting camera '{}' on {}".format(config.name, config.path))
+    camera = UsbCamera(config.name, config.path)
     server = CameraServer.startAutomaticCapture(camera=camera)
 
     camera.setConfigJson(json.dumps(config.config))
@@ -338,7 +337,7 @@ if __name__ == "__main__":
                     if counter < 1:
                         stop = time.time()
                         counter = 300
-                        print (counter/(stop - start),'fps')
+                        print (round(counter/(stop - start),1),'fps')
                         start = stop
                 except Exception as e:
                     print ('frame processing')
