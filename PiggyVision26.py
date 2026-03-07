@@ -1,6 +1,6 @@
 # $Source: /home/scrobotics/src/2026/RCS/PiggyVision26.py,v $
-# $Revision: 3.4 $
-# $Date: 2026/03/06 01:51:04 $
+# $Revision: 3.5 $
+# $Date: 2026/03/07 02:30:13 $
 # $Author: scrobotics $
 import json
 import math
@@ -378,8 +378,10 @@ def pose (results,Cam):
     detected_tags = [] # Will collect all the tag IDs seen by this camera plus their rvecs & tvecs.
     for r in results:
         try:
-            ret, rvec, tvec = cv2.solvePnP(TAG_OBJECT_POINTS,r.corners,
-                        Cam.mtx,Cam.dist, flags=cv2.SOLVEPNP_IPPE_SQUARE)
+            corners = r.corners.astype(np.float32)
+            undistorted_pts = cv2.fisheye.undistortPoints(r.corners.reshape(-1,1,2),Cam.mtx,Cam.dist,P=Cam.mtx)
+            ret, rvec, tvec = cv2.solvePnP(TAG_OBJECT_POINTS,undistorted_pts,
+                        Cam.mtx,None, flags=cv2.SOLVEPNP_IPPE_SQUARE)
             distance = np.linalg.norm(tvec)
             distances.append(distance)
             detected_tags.append (DetectedTags(r.tag_id, rvec, tvec))
