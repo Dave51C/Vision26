@@ -61,16 +61,19 @@ class Webcam ():
             try:
                 with open(paramFile,'r') as pfile:
                     j = json.load(pfile)
-            except:
+            except Exception as e:
                 print("Can't open", paramFile)
+                print (e)
             try:
                 self.mtx  = np.array(j['mtx'])
-            except:
+            except Exception as e:
                 print ("Can't set mtx")
+                print (e)
             try:
                 self.dist = np.array(j['dist'])
-            except:
+            except Exception as e:
                 print ("Can't set dist")
+                print (e)
             self.localXYZ = np.array([j['localX'],j['localY'],j['localZ']])
             self.pitch    = j['pitch']
             self.localYaw = j['yaw']

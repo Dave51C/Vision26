@@ -248,14 +248,15 @@ def startSwitchedCamera(config):
     return server
 
 def establish_topics():
-    global BotPos_tbl,pubRobotWorldX,pubRobotWorldY,pubRobotWorldR,pubHubRng,pubHubHdg,pubRobotFuel
+    #global BotPos_tbl,pubRobotWorldX,pubRobotWorldY,pubRobotWorldR,pubHubRng,pubHubHdg,pubRobotFuel
+    global BotPos_tbl,pubRobotWorldX,pubRobotWorldY,pubRobotWorldR,pubHubRng,pubHubHdg
     BotPos_tbl     = ntinst.getTable("BotPos")
     pubRobotWorldX = BotPos_tbl.getDoubleTopic("Robot_X").publish()
     pubRobotWorldY = BotPos_tbl.getDoubleTopic("Robot_Y").publish()
     pubRobotWorldR = BotPos_tbl.getDoubleTopic("Robot_Rot").publish()
     pubHubRng      = BotPos_tbl.getDoubleTopic("Hub_Rng").publish()
     pubHubHdg      = BotPos_tbl.getDoubleTopic("Hub_Hdg").publish()
-    pubRobotFuel   = BotPos_tbl.getDoubleTopic("Fuel_Level").publish()
+    #pubRobotFuel   = BotPos_tbl.getDoubleTopic("Fuel_Level").publish()
     return
 
 if __name__ == "__main__":
@@ -319,7 +320,7 @@ if __name__ == "__main__":
     start = time.time()
     ballCount = 0
     while True:
-        robotX, robotY, robotYaw = 0.0, 0.0,  0.0
+        #robotX, robotY, robotYaw = 0.0, 0.0,  0.0
         camera_estimates = []
         for Cam in CamQs:
             try:
@@ -362,17 +363,17 @@ if __name__ == "__main__":
             output_stream.putFrame(frame)
             #print ('fused:', round(robot_xyz[0],1), round(robot_xyz[1],1), round(robot_yaw,1))
 
-        if ballCount > 3000:
-            pubRobotFuel.set(4)
-        elif ballCount > 2000:
-            pubRobotFuel.set(3)
-        elif ballCount > 1000:
-            pubRobotFuel.set(2)
-        elif ballCount > 0:
-            pubRobotFuel.set(1)
-        else:
-            pubRobotFuel.set(0)
-        ballCount += 1
-        if ballCount > 4000:
-            ballCount = 0
+        #if ballCount > 3000:
+        #    pubRobotFuel.set(4)
+        #elif ballCount > 2000:
+        #    pubRobotFuel.set(3)
+        #elif ballCount > 1000:
+        #    pubRobotFuel.set(2)
+        #elif ballCount > 0:
+        #    pubRobotFuel.set(1)
+        #else:
+        #    pubRobotFuel.set(0)
+        #ballCount += 1
+        #if ballCount > 4000:
+        #    ballCount = 0
         
