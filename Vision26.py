@@ -35,6 +35,7 @@ switchedCameraConfigs = []
 cameras               = []
 CamQs                 = []
 Display               = {}
+timers                = {}
 
 def overlay(frame,Display,width,height):
     # last param (16) is for anti-alias line type LINE_AA
@@ -54,45 +55,40 @@ def queueImage (cam):
     print ("Queueing ",cam.name)
     while True:
         frame_time, input_img = cam.input_stream.grabFrame(cam.imgBuf)
-        #print (cam.name,frame_time)
-        cam.queue.append(input_img)
+        img_info = (frame_time, input_img)
+        cam.queue.append(img_info)
 
 def customizeCamera(config):
     # Create queue
     camQ = config.name
     match config.name:
-        case 'NorthCam':
-            print ('customizing NorthCam')
-            NorthCam = pv.BotCam('NorthCam')
-            NorthCam.input_stream = CameraServer.getVideo('NorthCam')
-            NorthCam.imgBuf = np.zeros(shape=(config.height, config.width, 3), dtype=np.uint8)
-            ImgT=threading.Thread(target=queueImage,args=(NorthCam,),daemon=True)
+        case 'FrontCam':
+            print ('customizing FrontCam')
+            FrontCam = pv.BotCam('FrontCam')
+            FrontCam.input_stream = CameraServer.getVideo('FrontCam')
+            FrontCam.imgBuf = np.zeros(shape=(config.height, config.width, 3), dtype=np.uint8)
+            ImgT=threading.Thread(target=queueImage,args=(FrontCam,),daemon=True)
             ImgT.start()
-            return NorthCam
-        case 'SouthCam':
-            print ('customizing SouthCam')
-            SouthCam = pv.BotCam('SouthCam')
-            SouthCam.input_stream = CameraServer.getVideo('SouthCam')
-            SouthCam.imgBuf = np.zeros(shape=(config.height, config.width, 3), dtype=np.uint8)
-            ImgT=threading.Thread(target=queueImage,args=(SouthCam,),daemon=True)
+            timers['FrontCam'] = 0
+            return FrontCam
+        case 'LeftCam':
+            print ('customizing LeftCam')
+            LeftCam = pv.BotCam('LeftCam')
+            LeftCam.input_stream = CameraServer.getVideo('LeftCam')
+            LeftCam.imgBuf = np.zeros(shape=(config.height, config.width, 3), dtype=np.uint8)
+            ImgT=threading.Thread(target=queueImage,args=(LeftCam,),daemon=True)
             ImgT.start()
-            return SouthCam
-        case 'EastCam':
-            print ('customizing EastCam')
-            EastCam = pv.BotCam('EastCam')
-            EastCam.input_stream = CameraServer.getVideo('EastCam')
-            EastCam.imgBuf = np.zeros(shape=(config.height, config.width, 3), dtype=np.uint8)
-            ImgT=threading.Thread(target=queueImage,args=(EastCam,),daemon=True)
+            timers['LeftCam'] = 0
+            return LeftCam
+        case 'RightCam':
+            print ('customizing RightCam')
+            RightCam = pv.BotCam('RightCam')
+            RightCam.input_stream = CameraServer.getVideo('RightCam')
+            RightCam.imgBuf = np.zeros(shape=(config.height, config.width, 3), dtype=np.uint8)
+            ImgT=threading.Thread(target=queueImage,args=(RightCam,),daemon=True)
             ImgT.start()
-            return EastCam
-        case 'WestCam':
-            print ('customizing WestCam')
-            WestCam = pv.BotCam('WestCam')
-            WestCam.input_stream = CameraServer.getVideo('WestCam')
-            WestCam.imgBuf = np.zeros(shape=(config.height, config.width, 3), dtype=np.uint8)
-            ImgT=threading.Thread(target=queueImage,args=(WestCam,),daemon=True)
-            ImgT.start()
-            return WestCam
+            timers['RightCam'] = 0
+            return RightCam
         case _:
             print ('Unknown camera name:',config.name)
 
@@ -248,7 +244,6 @@ def startSwitchedCamera(config):
     return server
 
 def establish_topics():
-    #global BotPos_tbl,pubRobotWorldX,pubRobotWorldY,pubRobotWorldR,pubHubRng,pubHubHdg,pubRobotFuel
     global BotPos_tbl,pubRobotWorldX,pubRobotWorldY,pubRobotWorldR,pubHubRng,pubHubHdg
     BotPos_tbl     = ntinst.getTable("BotPos")
     pubRobotWorldX = BotPos_tbl.getDoubleTopic("Robot_X").publish()
@@ -256,7 +251,6 @@ def establish_topics():
     pubRobotWorldR = BotPos_tbl.getDoubleTopic("Robot_Rot").publish()
     pubHubRng      = BotPos_tbl.getDoubleTopic("Hub_Rng").publish()
     pubHubHdg      = BotPos_tbl.getDoubleTopic("Hub_Hdg").publish()
-    #pubRobotFuel   = BotPos_tbl.getDoubleTopic("Fuel_Level").publish()
     return
 
 if __name__ == "__main__":
@@ -319,13 +313,16 @@ if __name__ == "__main__":
     counter = 300
     start = time.time()
     ballCount = 0
+    prev_time = 0
     while True:
-        #robotX, robotY, robotYaw = 0.0, 0.0,  0.0
         camera_estimates = []
         for Cam in CamQs:
             try:
                 try:
-                    frame = Cam.queue[0]       # non-destructive read
+                    frame_time,frame = Cam.queue[0]       # non-destructive read
+                    if frame_time != timers[Cam.name]:
+                        counter -= 1
+                        timers[Cam.name] = frame_time
                     gray = cv2.cvtColor (frame, cv2.COLOR_BGR2GRAY)
                     results = detector.detect(gray)
                     if len(results) > 0:
@@ -334,7 +331,6 @@ if __name__ == "__main__":
                             camera_estimates.append(estimate)
                     else:
                         continue
-                    counter -= 1
                     if counter < 1:
                         stop = time.time()
                         counter = 300
@@ -348,10 +344,6 @@ if __name__ == "__main__":
                 pass 
         if len(camera_estimates) > 0:
             fused_estimate = pv.fuse_robot_pose_multicam(camera_estimates)
-            #for e in camera_estimates:
-            #    print('camera:',vars(e))
-            #print('fused:',vars(fused_estimate))
-            #print ()
             Display["BOTX"] = round(fused_estimate.robot_xyz[0].item(),1)
             Display["BOTY"] = round(fused_estimate.robot_xyz[1].item(),1)
             Display["YAW "] = round(fused_estimate.robot_yaw,1)
@@ -362,18 +354,3 @@ if __name__ == "__main__":
             overlay(frame,Display,Cam.width,Cam.height)
             output_stream.putFrame(frame)
             #print ('fused:', round(robot_xyz[0],1), round(robot_xyz[1],1), round(robot_yaw,1))
-
-        #if ballCount > 3000:
-        #    pubRobotFuel.set(4)
-        #elif ballCount > 2000:
-        #    pubRobotFuel.set(3)
-        #elif ballCount > 1000:
-        #    pubRobotFuel.set(2)
-        #elif ballCount > 0:
-        #    pubRobotFuel.set(1)
-        #else:
-        #    pubRobotFuel.set(0)
-        #ballCount += 1
-        #if ballCount > 4000:
-        #    ballCount = 0
-        
