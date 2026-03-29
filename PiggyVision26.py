@@ -1,11 +1,44 @@
 # $Source: /home/scrobotics/src/2026/RCS/PiggyVision26.py,v $
-# $Revision: 3.8 $
-# $Date: 2026/03/15 18:03:01 $
+# $Revision: 3.10 $
+# $Date: 2026/03/29 14:25:09 $
 # $Author: scrobotics $
 import json
 import math
 import numpy as np
 import cv2
+from ntcore import NetworkTableInstance
+
+nt     = NetworkTableInstance.getDefault()
+VRtable = nt.getTable("Vision/Right")
+VLtable = nt.getTable("Vision/Left")
+VBtable = nt.getTable("Vision/Back")
+
+def publish_tags(detected_tags, camName, frame_time):
+    match camName:
+        case 'LeftCam':
+            table = VLtable
+        case 'RightCam':
+            table = VRtable
+        case 'BackCam':
+            table = VBtable
+    if len(detected_tags) == 0:
+        table.putNumber("tagCount",0)
+    else:
+        data = []
+        for det in detected_tags:
+            t = det.tvec.reshape(3)
+            r = det.rvec.reshape(3)
+            data.extend([
+                det.id,
+                t[0], t[1], t[2],
+                r[0], r[1], r[2],
+                det.error, det.ambiguity
+            ])
+        table.putNumberArray("tags", data)
+        table.putNumber("tagCount", len(detected_tags))
+
+    table.putNumber("timestamp", frame_time)
+
 # Tag size in inches
 TAG_SIZE = 6.5
 HALF = TAG_SIZE / 2.0
@@ -19,10 +52,12 @@ TAG_OBJECT_POINTS = np.array([
 ], dtype=np.float32)
 
 class DetectedTags:
-    def __init__(self, id, rvec, tvec):
-        self.id   = id
-        self.rvec = rvec
-        self.tvec = tvec
+    def __init__(self, id, rvec, tvec, error, ambiguity):
+        self.id        = id
+        self.rvec      = rvec
+        self.tvec      = tvec
+        self.error     = error
+        self.ambiguity = ambiguity
 
 class PoseEstimate:
     def __init__(self, robot_xyz, robot_yaw, avg_distance, num_tags, timestamp):
@@ -77,8 +112,8 @@ class Webcam ():
                     print (e)
                 self.localXYZ = np.array([j['localX'],j['localY'],j['localZ']])
                 self.pitch    = j['pitch']
-                self.localYaw = j['yaw']
-                print (self.localYaw, j['yaw'], j['name'])
+                self.localYaw = np.deg2rad(j['yaw'])
+                #print (self.localYaw, j['yaw'], j['name'])
                 break
 
 class BotCam (Webcam):
@@ -100,15 +135,13 @@ class BotCam (Webcam):
         self.name = name
         BotCam.list.append(self)    # Keep a list of cameras on bot
 
-def tag_pose_world(tag_xyz, tag_yaw_deg):
+def tag_pose_world(tag_xyz, tag_yaw):
     try:
-        yaw = np.deg2rad(tag_yaw_deg)
-
         # Tag normal (Z_tag)
-        z_axis = np.array([ np.cos(yaw), np.sin(yaw), 0.0 ])
+        z_axis = np.array([ np.cos(tag_yaw), np.sin(tag_yaw), 0.0 ])
 
         # Tag right (X_tag)
-        x_axis = np.array([ -np.sin(yaw), np.cos(yaw), 0.0 ])
+        x_axis = np.array([ -np.sin(tag_yaw), np.cos(tag_yaw), 0.0 ])
 
         # Tag up (Y_tag)
         y_axis = np.array([ 0.0, 0.0, 1.0 ])
@@ -122,7 +155,7 @@ def tag_pose_world(tag_xyz, tag_yaw_deg):
         print (e)
         return None, None
 
-def camera_pose_world_from_tag( rvec, tvec, tag_xyz, tag_yaw_deg):
+def camera_pose_world_from_tag( rvec, tvec, tag_xyz, tag_yaw):
     try:
         R_ct_cv, _ = cv2.Rodrigues(rvec)
         t_ct_cv = tvec.reshape(3)
@@ -135,25 +168,23 @@ def camera_pose_world_from_tag( rvec, tvec, tag_xyz, tag_yaw_deg):
         R_tc = R_ct.T
         t_tc = -R_tc @ t_ct
         
-        R_wt, t_wt = tag_pose_world(tag_xyz, tag_yaw_deg)
+        R_wt, t_wt = tag_pose_world(tag_xyz, tag_yaw)
         
         R_wc = R_wt @ R_tc
         t_wc = R_wt @ t_tc + t_wt
         
-        camera_yaw = np.rad2deg(np.arctan2(R_wc[1,0], R_wc[0,0])) 
+        camera_yaw = np.arctan2(R_wc[1,0], R_wc[0,0])
         return t_wc, camera_yaw
     except Exception as e:
         print('camera_pose_world_from_tag')
         print (e)
         return None, None
 
-def camera_to_robot_world(camera_world, camera_yaw_deg, cam):
+def camera_to_robot_world(camera_world, camera_yaw, cam):
     try:
-        # --- 1) Convert yaw to radians ---
-        camera_yaw_rad = np.deg2rad(camera_yaw_deg)
     
         # Robot yaw = camera yaw - mounting yaw
-        robot_yaw_rad = ( camera_yaw_rad - np.deg2rad(cam.localYaw))
+        robot_yaw_rad = camera_yaw - cam.localYaw
     
         # --- 2) Rotate camera offset into world frame ---
         offset_forward = cam.localXYZ[0]
@@ -170,9 +201,9 @@ def camera_to_robot_world(camera_world, camera_yaw_deg, cam):
         )
     
         robot_world = np.array([ robot_x, robot_y, 0.0 ])
-        robot_yaw_deg = np.rad2deg(robot_yaw_rad)
+        #robot_yaw_deg = np.rad2deg(robot_yaw_rad)
     
-        return robot_world, robot_yaw_deg
+        return robot_world, robot_yaw_rad
     except Exception as e:
         print ('camera_to_robot_world')
         print (e)
@@ -180,21 +211,20 @@ def camera_to_robot_world(camera_world, camera_yaw_deg, cam):
 
 def robot_pose_from_camera(
     camera_xyz,
-    camera_yaw_deg,
+    camera_yaw,
     cam_offset_xyz,        # camera position in robot frame
-    cam_yaw_rel_robot_deg  # camera rotation relative to robot
+    cam_yaw_rel_robot      # camera rotation relative to robot
     ):
     try:
         cam = np.array(camera_xyz)
     
         # Step 1: robot yaw from camera yaw
-        robot_yaw = camera_yaw_deg - cam_yaw_rel_robot_deg
+        robot_yaw = camera_yaw - cam_yaw_rel_robot
     
         # Step 2: rotate camera offset into world frame
-        yaw = np.deg2rad(robot_yaw)
         R = np.array([
-            [np.cos(yaw), -np.sin(yaw), 0],
-            [np.sin(yaw),  np.cos(yaw), 0],
+            [np.cos(robot_yaw), -np.sin(robot_yaw), 0],
+            [np.sin(robot_yaw),  np.cos(robot_yaw), 0],
             [0,0,1]
         ])
     
@@ -247,15 +277,14 @@ def fuse_camera_pose_multitag(detections, TAG_DB, cam_height):
             weight_sum += weight
     
             # --- Yaw vector accumulation ---
-            yaw_rad = np.deg2rad(camera_yaw)
-            yaw_vector_sum += weight * np.array([ np.cos(yaw_rad), np.sin(yaw_rad) ])
+            yaw_vector_sum += weight * np.array([ np.cos(camera_yaw), np.sin(camera_yaw) ])
     
         if weight_sum == 0:
             return None, None
     
         fused_camera_world = weighted_position_sum / weight_sum
     
-        fused_camera_yaw = np.rad2deg( np.arctan2( yaw_vector_sum[1], yaw_vector_sum[0]))
+        fused_camera_yaw = np.arctan2( yaw_vector_sum[1], yaw_vector_sum[0])
     
         return fused_camera_world, fused_camera_yaw
     except Exception as e:
@@ -283,9 +312,7 @@ def fuse_robot_pose_multicam(robot_estimates):
     
             weighted_pos_sum += w * np.array([ est.robot_xyz[0], est.robot_xyz[1] ])
     
-            yaw_rad = np.deg2rad(est.robot_yaw)
-    
-            yaw_vec_sum += w * np.array([ np.cos(yaw_rad), np.sin(yaw_rad) ])
+            yaw_vec_sum += w * np.array([ np.cos(est.robot_yaw), np.sin(est.robot_yaw) ])
             weighted_distance_sum += w * est.avg_distance
     
             weight_sum += w
@@ -296,7 +323,7 @@ def fuse_robot_pose_multicam(robot_estimates):
     
         fused_xy = weighted_pos_sum / weight_sum
     
-        fused_yaw = np.rad2deg( np.arctan2( yaw_vec_sum[1], yaw_vec_sum[0]))
+        fused_yaw = np.arctan2( yaw_vec_sum[1], yaw_vec_sum[0])
     
         fused_avg_distance = weighted_distance_sum / weight_sum
     
@@ -368,7 +395,7 @@ TAG_CORNERS = {
 #  , 8:{"center":np.array([ 120.000, 196.500,  21.500]),"yaw":270.0}
 #}
 
-def pose (results,Cam):
+def pose (results,Cam,frame_time):
     def show_debugging_info():
         print (f'{Cam.name:>10s},{r.tag_id:>2d},tag_world={tag_xyz},tag_yaw_deg={tag_yaw_deg}, rvec={rvec},\ntvec={tvec},\ncamera_world={camera_world},camera_yaw={camera_yaw},\nrobot_world={robot_xyz},robot_yaw={robot_yaw}\n\n')
     from math import atan, atan2, asin, degrees
@@ -380,21 +407,34 @@ def pose (results,Cam):
         try:
             corners = r.corners.astype(np.float32)
             if len(Cam.dist) == 4:
-                undistorted_pts = cv2.fisheye.undistortPoints(r.corners.reshape(-1,1,2),Cam.mtx,Cam.dist,P=Cam.mtx)
-                ret, rvec, tvec = cv2.solvePnP(TAG_OBJECT_POINTS,undistorted_pts,
-                            Cam.mtx,None, flags=cv2.SOLVEPNP_IPPE_SQUARE)
+                undistorted_pts = cv2.fisheye.undistortPoints(
+                           r.corners.reshape(-1,1,2),Cam.mtx,Cam.dist,P=Cam.mtx)
+                retvals, rvecs, tvecs, errors = cv2.solvePnPGeneric(TAG_OBJECT_POINTS,
+                           undistorted_pts, Cam.mtx,None, flags=cv2.SOLVEPNP_IPPE_SQUARE)
             else:
-                ret, rvec, tvec = cv2.solvePnP(TAG_OBJECT_POINTS,r.corners,
-                            Cam.mtx,None, flags=cv2.SOLVEPNP_IPPE_SQUARE)
+                retvals, rvecs, tvecs, errors = cv2.solvePnPGeneric(TAG_OBJECT_POINTS,
+                           r.corners, Cam.mtx,None, flags=cv2.SOLVEPNP_IPPE_SQUARE)
+
+            # --- pick best solution (lowest reprojection error) ---
+            best_idx = int(np.argmin(errors))
+            rvec     = rvecs[best_idx]
+            tvec     = tvecs[best_idx]
+            error    = float(errors[best_idx])
+            if len(errors) > 1:
+                ambiguity = errors[best_idx] / (errors[1-best_idx] + 1e-6)
+            else:
+                ambiguity = 0.0
+
+            #print ("error:",round(error,3))
             distance = np.linalg.norm(tvec)
             distances.append(distance)
-            detected_tags.append (DetectedTags(r.tag_id, rvec, tvec))
+            detected_tags.append (DetectedTags(r.tag_id, rvec, tvec, error, ambiguity))
         except Exception as e:
             print ('pv.pose error')
             print (e)
             return None,None
     tag_xyz = TAG_CORNERS[r.tag_id]["center"]
-    tag_yaw_deg = TAG_CORNERS[r.tag_id]["yaw"]
+    tag_yaw = TAG_CORNERS[r.tag_id]["yaw"]
     camera_world, camera_yaw = fuse_camera_pose_multitag (
                                detected_tags, TAG_CORNERS, Cam.localXYZ[2])
     robot_xyz, robot_yaw   = camera_to_robot_world (camera_world, camera_yaw, Cam)
@@ -402,6 +442,8 @@ def pose (results,Cam):
 
     avg_distance           = np.mean(distances)
     num_tags               = len(distances)
+    publish_tags(detected_tags, Cam.name, frame_time)
+
     return PoseEstimate(robot_xyz, robot_yaw, avg_distance, num_tags, frame_timestamp)
 
 def rotate(px, py, ox, oy, angle, Integer=False):
@@ -418,6 +460,10 @@ def rotate(px, py, ox, oy, angle, Integer=False):
         newx = round(newx)
         newy = round(newy)
     return newx, newy
+
+# Convert all tag rotations to radians
+for T in TAG_CORNERS:
+    TAG_CORNERS[T]["yaw"] = np.deg2rad(TAG_CORNERS[T]["yaw"])
 
 if __name__ == "__main__":
     from pprint import pprint
