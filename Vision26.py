@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # $Source: /home/scrobotics/src/2026/RCS/Vision26.py,v $
-# $Revision: 1.5 $
-# $Date: 2026/03/06 01:53:10 $
+# $Revision: 1.7 $
+# $Date: 2026/03/29 14:23:08 $
 # $Author: scrobotics $
 
 # Copyright (c) FIRST and other WPILib contributors.
@@ -89,6 +89,15 @@ def customizeCamera(config):
             ImgT.start()
             timers['RightCam'] = 0
             return RightCam
+        case 'BackCam':
+            print ('customizing BackCam')
+            BackCam = pv.BotCam('BackCam')
+            BackCam.input_stream = CameraServer.getVideo('BackCam')
+            BackCam.imgBuf = np.zeros(shape=(config.height, config.width, 3), dtype=np.uint8)
+            ImgT=threading.Thread(target=queueImage,args=(BackCam,),daemon=True)
+            ImgT.start()
+            timers['BackCam'] = 0
+            return BackCam
         case _:
             print ('Unknown camera name:',config.name)
 
@@ -326,7 +335,7 @@ if __name__ == "__main__":
                     gray = cv2.cvtColor (frame, cv2.COLOR_BGR2GRAY)
                     results = detector.detect(gray)
                     if len(results) > 0:
-                        estimate = pv.pose(results,Cam)
+                        estimate = pv.pose(results,Cam,frame_time)
                         if estimate is not None:
                             camera_estimates.append(estimate)
                     else:
