@@ -81,7 +81,7 @@ public class VisionIO_NT implements VisionIO {
         table = NetworkTableInstance.getDefault().getTable("Vision"); 
     } 
  
-    \@Override 
+    @Override 
     public void updateInputs(VisionIOInputs inputs) { 
         inputs.hasTargets = table.getEntry("hasTargets").getBoolean(false); 
         double[] pose = table.getEntry("robotPose").getDoubleArray(new double[3]); 
