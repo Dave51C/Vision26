@@ -258,8 +258,7 @@ NetworkTables works best with arrays, so pack like this:
 
 Python
 
-\# per tag = 7 numbers 
-\# [id, tx, ty, tz, rx, ry, rz]
+\# per tag = 7 numbers  [id, tx, ty, tz, rx, ry, rz]
 
 ## Example code
 
@@ -491,17 +490,14 @@ Add this right after `solvePnP`:
 Python
 
 def compute_reprojection_error(object_points, image_points, rvec, tvec, K, dist): 
- # Project 3D points back into image 
- projected, _ = cv2.projectPoints( object_points, rvec, tvec, K, dist ) 
- 
- projected = projected.reshape(-1, 2) 
- image_points = image_points.reshape(-1, 2) 
- 
- # Pixel error per corner 
- error = np.linalg.norm(projected - image_points, axis=1) 
- 
- # Return RMS error 
- return np.sqrt(np.mean(error**2))
+    # Project 3D points back into image 
+    projected, _ = cv2.projectPoints( object_points, rvec, tvec, K, dist ) 
+    projected = projected.reshape(-1, 2) 
+    image_points = image_points.reshape(-1, 2) 
+    # Pixel error per corner 
+    error = np.linalg.norm(projected - image_points, axis=1) 
+    # Return RMS error 
+    return np.sqrt(np.mean(error**2))
 
 ## Use it
 
