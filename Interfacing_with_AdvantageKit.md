@@ -29,14 +29,14 @@ Where `VisionIOInputs` contains fields like:
 
 Java
 
-public class VisionIOInputs { 
+`public class VisionIOInputs { 
     public boolean hasTargets;   
     public Pose2d estimatedPose;   
     public double timestampSeconds;   
     public int tagCount;   
     public double avgDistance; 
 }
-
+`
 So your Python just needs to publish exactly that.
 
 # 2. Send your Python results via NetworkTables
