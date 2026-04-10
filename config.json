@@ -1,6 +1,6 @@
 {
     "Horizon" : 90.0,
-    "IP"      : "localhost",
+    "IP"      : "10.2.50.1",
     "Logging" : "False",
     "LogDir"  : "/media/USBDRIVE/"
 }

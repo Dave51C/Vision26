@@ -38,15 +38,15 @@ class PoseEstimate:
         tag_ids=None, std_dev_x=None, std_dev_y=None, std_dev_yaw=None,\
         avg_reproj_error=None, ambiguity=None, camera_name=None, thetax=None, thetay=None
     ):
-        self.robot_X          = robot_xyz[0] # / 39.37  # inches -> meter
-        self.robot_Y          = robot_xyz[1] # / 39.37  # inches -> meter
-        self.robot_Z          = robot_xyz[2] # / 39.37  # inches -> meter
+        self.robot_X          = robot_xyz[0] # send as inches / 39.37  # inches -> meter
+        self.robot_Y          = robot_xyz[1] # send as inches / 39.37  # inches -> meter
+        self.robot_Z          = robot_xyz[2] # send as inches / 39.37  # inches -> meter
         self.robot_yaw        = robot_yaw
-        self.avg_distance     = avg_distance # / 39.37  # inches -> meter
+        self.avg_distance     = avg_distance # send as inches / 39.37  # inches -> meter
         self.num_tags         = num_tags
         self.timestamp        = timestamp
         self.tag_ids          = tag_ids or []
-        self.tag_count        = len(tag_ids)
+        self.tag_count        = len(self.tag_ids)
         self.thetax           = thetax
         self.thetay           = thetay
         self.std_dev_x        = std_dev_x
@@ -55,65 +55,6 @@ class PoseEstimate:
         self.avg_reproj_error = avg_reproj_error
         self.ambiguity        = ambiguity
         self.camera_name      = camera_name
-
-#class VisionTable:
-#    def __init__(self):
-#        base = inst.getTable("Vision26")
-#        self.cameras = {
-#            name: CameraTable(base, name)
-#            for name in ["LeftCam", "RightCam", "BackCam"]
-#        }
-#        self.fused = CameraTable(base, "Fused")
-#
-#    def publish_camera(self, name, pose):
-#        self.cameras[name].publish(pose)
-#
-#    def publish_fused(self, pose):
-#        self.fused.publish(pose)
-#
-#class CameraTable:
-#    def __init__(self, base_table, name):
-#        self.table        = base_table.getSubTable(name)
-#        self.robot_X      = self.table.getDoubleTopic("robot_X").publish()
-#        self.robot_Y      = self.table.getDoubleTopic("robot_Y").publish()
-#        self.robot_Z      = self.table.getDoubleTopic("robot_Z").publish()
-#        self.robot_yaw    = self.table.getDoubleTopic("robot_yaw").publish()
-#        self.timestamp    = self.table.getDoubleTopic("timestamp").publish()
-#        self.latency      = self.table.getDoubleTopic("latency").publish()
-#        self.tag_ids      = self.table.getIntegerArrayTopic("tag_ids").publish()
-#        self.tag_count    = self.table.getIntegerTopic("tag_count").publish()
-#        self.avg_distance = self.table.getDoubleTopic("avg_distance").publish()
-#        self.ambiguity    = self.table.getDoubleTopic("ambiguity").publish()
-#        self.thetax       = self.table.getDoubleTopic("thetax").publish()
-#        self.thetay       = self.table.getDoubleTopic("thetay").publish()
-#        self.reproj       = self.table.getDoubleTopic("reproj_error").publish()
-#        self.std_x        = self.table.getDoubleTopic("std_x").publish()
-#        self.std_y        = self.table.getDoubleTopic("std_y").publish()
-#        self.std_yaw      = self.table.getDoubleTopic("std_yaw").publish()
-#        self.connected    = self.table.getBooleanTopic("connected").publish()
-#        self.heartbeat    = self.table.getIntegerTopic("heartbeat").publish()
-#        self.valid        = self.table.getBooleanTopic("valid").publish()
-#    def publish(self, pe):
-#        if pe is None:
-#            self.valid.set(False)
-#            return
-#        self.robot_X.set(pe.robot_X)
-#        self.robot_Y.set(pe.robot_Y)
-#        self.robot_Z.set(pe.robot_Z)
-#        self.robot_yaw.set(pe.robot_yaw)
-#        self.timestamp.set(pe.timestamp)
-#        self.latency.set(current_time - pe.timestamp)
-#        self.tag_count.set(pe.tag_count)
-#        self.avg_distance.set(pe.avg_distance)
-#        self.ambiguity.set(pe.ambiguity)
-#        self.reproj.set(pe.avg_reproj_error)
-#        self.std_x.set(pe.std_dev_x)
-#        self.std_y.set(pe.std_dev_y)
-#        self.std_yaw.set(pe.std_dev_yaw)
-#        self._heartbeat_counter += 1
-#        self.heartbeat.set(self._heartbeat_counter)
-#        self.connected.set(True)
-#        self.valid.set(True)
 
 class Webcam ():
     def __init__(self, name):
@@ -300,7 +241,8 @@ def tag_pose_world(tag_xyz, tag_yaw):
     except Exception as e:
         print ('tag_pose_world')
         print (e)
-        return None, None
+        #return None, None
+        return None
 
 def camera_pose_world_from_tag( rvec, tvec, tag_xyz, tag_yaw):
     try:
@@ -327,7 +269,8 @@ def camera_pose_world_from_tag( rvec, tvec, tag_xyz, tag_yaw):
     except Exception as e:
         print('camera_pose_world_from_tag')
         print (e)
-        return None, None
+        #return None, None
+        return None
 
 def camera_to_robot_world(camera_world, camera_yaw, cam):
     try:
@@ -356,7 +299,8 @@ def camera_to_robot_world(camera_world, camera_yaw, cam):
     except Exception as e:
         print ('camera_to_robot_world')
         print (e)
-        return None, None
+        #return None, None
+        return None
 
 def robot_pose_from_camera(
     camera_xyz,
@@ -389,6 +333,12 @@ def robot_pose_from_camera(
 
 #def fuse_robot_pose_multicam(robot_estimates):
 #    try:
+#        if robot_estimates is None:
+#            return None
+#
+#        # filter bad entries
+#        robot_estimates = [e for e in robot_estimates if e is not None]
+#
 #        if len(robot_estimates) == 0:
 #            return None
 #
@@ -417,7 +367,7 @@ def robot_pose_from_camera(
 #        fused_xy = weighted_pos_sum / weight_sum
 #        fused_yaw = np.arctan2(yaw_vec_sum[1], yaw_vec_sum[0])
 #        fused_avg_distance = weighted_distance_sum / weight_sum
-#        fused_timestamp = max(timestamps)
+#        fused_timestamp = max(timestamps) if timestamps else time.time()
 #
 #        return PoseEstimate(
 #            robot_xyz=np.array([fused_xy[0], fused_xy[1], 0.0]),
@@ -430,16 +380,24 @@ def robot_pose_from_camera(
 #    except Exception as e:
 #        print("fuse_robot_pose_multicam error:", e)
 #        return None
-
 def fuse_robot_pose_multicam(robot_estimates):
+    import traceback
     try:
         if robot_estimates is None:
             return None
 
-        # filter bad entries
-        robot_estimates = [e for e in robot_estimates if e is not None]
+        valid_estimates = [
+            est for est in robot_estimates
+            if (
+                est is not None and
+                isinstance(est.num_tags, int) and est.num_tags > 0 and
+                isinstance(est.avg_distance, (int, float)) and est.avg_distance > 0 and
+                est.robot_X is not None and
+                est.robot_Y is not None
+            )
+        ]
 
-        if len(robot_estimates) == 0:
+        if len(valid_estimates) == 0:
             return None
 
         weighted_pos_sum = np.zeros(2)
@@ -448,10 +406,7 @@ def fuse_robot_pose_multicam(robot_estimates):
         weight_sum = 0.0
         timestamps = []
 
-        for est in robot_estimates:
-            if est.avg_distance is None or est.num_tags == 0:
-                continue
-
+        for est in valid_estimates:
             w = est.num_tags / (est.avg_distance ** 2)
 
             weighted_pos_sum += w * np.array([est.robot_X, est.robot_Y])
@@ -459,7 +414,9 @@ def fuse_robot_pose_multicam(robot_estimates):
             weighted_distance_sum += w * est.avg_distance
 
             weight_sum += w
-            timestamps.append(est.timestamp)
+
+            if isinstance(est.timestamp, (int, float)) and est.timestamp > 0:
+                timestamps.append(est.timestamp)
 
         if weight_sum == 0:
             return None
@@ -467,18 +424,19 @@ def fuse_robot_pose_multicam(robot_estimates):
         fused_xy = weighted_pos_sum / weight_sum
         fused_yaw = np.arctan2(yaw_vec_sum[1], yaw_vec_sum[0])
         fused_avg_distance = weighted_distance_sum / weight_sum
-        fused_timestamp = max(timestamps) if timestamps else time.time()
+        fused_timestamp = max(timestamps) if timestamps else 0.0
 
         return PoseEstimate(
             robot_xyz=np.array([fused_xy[0], fused_xy[1], 0.0]),
             robot_yaw=fused_yaw,
             avg_distance=fused_avg_distance,
-            num_tags=sum(est.num_tags for est in robot_estimates),
+            num_tags=sum(est.num_tags for est in valid_estimates),
             timestamp=fused_timestamp
         )
 
     except Exception as e:
         print("fuse_robot_pose_multicam error:", e)
+        traceback.print_exc()
         return None
 
 def fuse_camera_pose_multitag(detections, TAG_DB, cam_height):
@@ -526,7 +484,8 @@ def fuse_camera_pose_multitag(detections, TAG_DB, cam_height):
             yaw_vector_sum += weight * np.array([ np.cos(camera_yaw), np.sin(camera_yaw) ])
     
         if weight_sum == 0:
-            return None, None, None, None
+            return None
+            #return None, None, None, None
 
         yaw_confidence     = np.linalg.norm(yaw_vector_sum) / weight_sum
         avg_angle_factor   = angle_sum / weight_sum
@@ -537,7 +496,8 @@ def fuse_camera_pose_multitag(detections, TAG_DB, cam_height):
     except Exception as e:
         print ('fuse_camera_pose_multitag')
         print (e)
-        return None, None, None, None
+        return None
+        #return None, None, None, None
 
 # These are the tags for competition. Restore them when neeed.
 """
@@ -653,9 +613,6 @@ def pose (results,Cam,frame_time):
 
             camera_world_tmp, camera_yaw_tmp = \
                 camera_pose_world_from_tag(rvec, tvec, tag_xyz, tag_yaw)
-            if camera_world_tmp is None:
-                print("camera_pose_world failed for tag", r.tag_id)
-                continue
 
             view_dir = camera_world_tmp - t_wt
             norm = np.linalg.norm(view_dir)

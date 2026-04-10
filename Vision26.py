@@ -21,7 +21,7 @@ import PiggyVision26 as pv
 from math import degrees
 
 from cscore import CameraServer, VideoSource, UsbCamera, MjpegServer
-from ntcore import NetworkTableInstance, EventFlags
+from ntcore import NetworkTableInstance, EventFlags, _now
 
 configFile = "/boot/frc.json"
 #configFile = "./frc.json"
@@ -70,21 +70,42 @@ class CameraTable:
         if pe is None:
             self.valid.set(False)
             return
-        print("Publishing", pe.robot_X, pe.robot_Y)
+        #self.robot_X.set(pe.robot_X)
+        #self.robot_Y.set(pe.robot_Y)
+        #self.robot_Z.set(pe.robot_Z)
+        #self.robot_yaw.set(pe.robot_yaw)
+        #self.timestamp.set(pe.timestamp)
+        #self.latency.set((_now()/ 1000000) - pe.timestamp)
+        #self.tag_count.set(pe.tag_count)
+        #self.tag_ids.set(pe.tag_ids)
+        #self.avg_distance.set(pe.avg_distance)
+        #self.ambiguity.set(pe.ambiguity)
+        #self.thetax.set(pe.thetax)
+        #self.thetay.set(pe.thetay)
+        #self.reproj.set(pe.avg_reproj_error)
+        #self.std_x.set(pe.std_dev_x)
+        #self.std_y.set(pe.std_dev_y)
+        #self.std_yaw.set(pe.std_dev_yaw)
+        #self._heartbeat_counter += 1
+        #self.heartbeat.set(self._heartbeat_counter)
+        #self.connected.set(True)
+        #self.valid.set(True)
         self.robot_X.set(pe.robot_X)
         self.robot_Y.set(pe.robot_Y)
         self.robot_Z.set(pe.robot_Z)
         self.robot_yaw.set(pe.robot_yaw)
         self.timestamp.set(pe.timestamp)
-        self.latency.set(time.time() - pe.timestamp)
+        self.latency.set((_now() / 1_000_000.0) - pe.timestamp)
         self.tag_count.set(pe.tag_count)
-        self.tag_ids.set(pe.tag_ids)
-        self.avg_distance.set(pe.avg_distance)
-        self.ambiguity.set(pe.ambiguity)
-        self.reproj.set(pe.avg_reproj_error)
-        self.std_x.set(pe.std_dev_x)
-        self.std_y.set(pe.std_dev_y)
-        self.std_yaw.set(pe.std_dev_yaw)
+        self.tag_ids.set(pe.tag_ids if pe.tag_ids is not None else [])
+        self.avg_distance.set(pe.avg_distance if pe.avg_distance is not None else 0.0)
+        self.ambiguity.set(pe.ambiguity if pe.ambiguity is not None else 0.0)
+        self.reproj.set(pe.avg_reproj_error if pe.avg_reproj_error is not None else 0.0)
+        self.std_x.set(pe.std_dev_x if pe.std_dev_x is not None else 0.0)
+        self.std_y.set(pe.std_dev_y if pe.std_dev_y is not None else 0.0)
+        self.std_yaw.set(pe.std_dev_yaw if pe.std_dev_yaw is not None else 0.0)
+        self.thetax.set(pe.thetax if pe.thetax is not None else 0.0)
+        self.thetay.set(pe.thetay if pe.thetay is not None else 0.0)
         self._heartbeat_counter += 1
         self.heartbeat.set(self._heartbeat_counter)
         self.connected.set(True)
@@ -118,6 +139,9 @@ def queueImage (cam):
     while True:
         try:
             frame_time, input_img = cam.input_stream.grabFrame(cam.imgBuf)
+            if frame_time is None or frame_time <= 0:
+                continue
+            frame_time = frame_time / 1000000.0 # convert from μs to seconds.
             img_info = (frame_time, input_img)
             cam.queue.append(img_info)
         except:
@@ -406,10 +430,10 @@ if __name__ == "__main__":
                         estimate = pv.pose(results,Cam,frame_time)
                     except Exception as e:
                         print (e)
-                    if estimate is None:
-                        print("POSE FAILED for", Cam.name)
-                    else:
-                        print("POSE OK for", Cam.name)
+                    #if estimate is None:
+                    #    print("POSE FAILED for", Cam.name)
+                    #else:
+                    #    print("POSE OK for", Cam.name)
                 V26.publish_camera(Cam.name, estimate)
                 if estimate is not None:
                     camera_estimates.append(estimate)
@@ -437,14 +461,14 @@ if __name__ == "__main__":
                 V26.publish_fused(fused_estimate)
             else:
                 V26.publish_fused(None)
-            #Display["BOTX"] = round(fused_estimate.robot_xyz[0].item(),1)
-            #Display["BOTY"] = round(fused_estimate.robot_xyz[1].item(),1)
-            #Display["YAW "] = round(fused_estimate.robot_yaw,1)
-            #pubRobotWorldX.set(fused_estimate.robot_xyz[0].item())
-            #pubRobotWorldY.set(fused_estimate.robot_xyz[1].item())
-            #pubRobotWorldR.set(fused_estimate.robot_yaw)
+            Display["BOTX"] = round(fused_estimate.robot_X,1)
+            Display["BOTY"] = round(fused_estimate.robot_Y,1)
+            Display["YAW "] = round(fused_estimate.robot_yaw,1)
+            pubRobotWorldX.set(fused_estimate.robot_X)
+            pubRobotWorldY.set(fused_estimate.robot_Y)
+            pubRobotWorldR.set(fused_estimate.robot_yaw)
 
-            #overlay(frame,Display,Cam.width,Cam.height)
+            overlay(frame,Display,Cam.width,Cam.height)
             output_stream.putFrame(frame)
             #print ('fused:', round(robot_xyz[0],1), round(robot_xyz[1],1), round(robot_yaw,1))
 
