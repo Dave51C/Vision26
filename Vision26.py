@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # $Source: /home/scrobotics/src/2026/RCS/Vision26.py,v $
-# $Revision: 1.7 $
-# $Date: 2026/03/29 14:23:08 $
+# $Revision: 2.0 $
+# $Date: 2026/04/10 00:01:03 $
 # $Author: scrobotics $
 
 # Copyright (c) FIRST and other WPILib contributors.
@@ -27,6 +27,68 @@ configFile = "/boot/frc.json"
 #configFile = "./frc.json"
 
 class CameraConfig: pass
+
+class VisionTable:
+    def __init__(self):
+        base = ntinst.getTable("Vision26")
+        self.cameras = {
+            name: CameraTable(base, name)
+            for name in ["LeftCam", "RightCam", "BackCam"]
+        }
+        self.fused = CameraTable(base, "Fused")
+
+    def publish_camera(self, name, pose):
+        self.cameras[name].publish(pose)
+
+    def publish_fused(self, pose):
+        self.fused.publish(pose)
+
+class CameraTable:
+    def __init__(self, base_table, name):
+        self._heartbeat_counter = 0
+        self.table        = base_table.getSubTable(name)
+        self.robot_X      = self.table.getDoubleTopic("robot_X").publish()
+        self.robot_Y      = self.table.getDoubleTopic("robot_Y").publish()
+        self.robot_Z      = self.table.getDoubleTopic("robot_Z").publish()
+        self.robot_yaw    = self.table.getDoubleTopic("robot_yaw").publish()
+        self.timestamp    = self.table.getDoubleTopic("timestamp").publish()
+        self.latency      = self.table.getDoubleTopic("latency").publish()
+        self.tag_ids      = self.table.getIntegerArrayTopic("tag_ids").publish()
+        self.tag_count    = self.table.getIntegerTopic("tag_count").publish()
+        self.avg_distance = self.table.getDoubleTopic("avg_distance").publish()
+        self.ambiguity    = self.table.getDoubleTopic("ambiguity").publish()
+        self.thetax       = self.table.getDoubleTopic("thetax").publish()
+        self.thetay       = self.table.getDoubleTopic("thetay").publish()
+        self.reproj       = self.table.getDoubleTopic("reproj_error").publish()
+        self.std_x        = self.table.getDoubleTopic("std_x").publish()
+        self.std_y        = self.table.getDoubleTopic("std_y").publish()
+        self.std_yaw      = self.table.getDoubleTopic("std_yaw").publish()
+        self.connected    = self.table.getBooleanTopic("connected").publish()
+        self.heartbeat    = self.table.getIntegerTopic("heartbeat").publish()
+        self.valid        = self.table.getBooleanTopic("valid").publish()
+    def publish(self, pe):
+        if pe is None:
+            self.valid.set(False)
+            return
+        print("Publishing", pe.robot_X, pe.robot_Y)
+        self.robot_X.set(pe.robot_X)
+        self.robot_Y.set(pe.robot_Y)
+        self.robot_Z.set(pe.robot_Z)
+        self.robot_yaw.set(pe.robot_yaw)
+        self.timestamp.set(pe.timestamp)
+        self.latency.set(time.time() - pe.timestamp)
+        self.tag_count.set(pe.tag_count)
+        self.tag_ids.set(pe.tag_ids)
+        self.avg_distance.set(pe.avg_distance)
+        self.ambiguity.set(pe.ambiguity)
+        self.reproj.set(pe.avg_reproj_error)
+        self.std_x.set(pe.std_dev_x)
+        self.std_y.set(pe.std_dev_y)
+        self.std_yaw.set(pe.std_dev_yaw)
+        self._heartbeat_counter += 1
+        self.heartbeat.set(self._heartbeat_counter)
+        self.connected.set(True)
+        self.valid.set(True)
 
 team                  = None
 server                = False
@@ -54,9 +116,13 @@ def queueImage (cam):
     import apriltag
     print ("Queueing ",cam.name)
     while True:
-        frame_time, input_img = cam.input_stream.grabFrame(cam.imgBuf)
-        img_info = (frame_time, input_img)
-        cam.queue.append(img_info)
+        try:
+            frame_time, input_img = cam.input_stream.grabFrame(cam.imgBuf)
+            img_info = (frame_time, input_img)
+            cam.queue.append(img_info)
+        except:
+            print("nothin from",cam.name)
+            pass
 
 def customizeCamera(config):
     # Create queue
@@ -307,6 +373,7 @@ if __name__ == "__main__":
     # Our code starts. Buckle-up!
     #########################################################################
 
+    V26 = VisionTable() 
     output_stream = CameraServer.putVideo("Overlay", 640, 480)
     options = apriltag.DetectorOptions(
         families      = "tag36h11",
@@ -327,19 +394,28 @@ if __name__ == "__main__":
         camera_estimates = []
         for Cam in CamQs:
             try:
-                try:
-                    frame_time,frame = Cam.queue[0]       # non-destructive read
-                    if frame_time != timers[Cam.name]:
-                        counter -= 1
-                        timers[Cam.name] = frame_time
-                    gray = cv2.cvtColor (frame, cv2.COLOR_BGR2GRAY)
-                    results = detector.detect(gray)
-                    if len(results) > 0:
+                frame_time,frame = Cam.queue[0]       # non-destructive read
+                if frame_time != timers[Cam.name]:
+                    counter -= 1
+                    timers[Cam.name] = frame_time
+                gray = cv2.cvtColor (frame, cv2.COLOR_BGR2GRAY)
+                results = detector.detect(gray)
+                estimate = None
+                if len(results) > 0:
+                    try:
                         estimate = pv.pose(results,Cam,frame_time)
-                        if estimate is not None:
-                            camera_estimates.append(estimate)
+                    except Exception as e:
+                        print (e)
+                    if estimate is None:
+                        print("POSE FAILED for", Cam.name)
                     else:
-                        continue
+                        print("POSE OK for", Cam.name)
+                V26.publish_camera(Cam.name, estimate)
+                if estimate is not None:
+                    camera_estimates.append(estimate)
+                else:
+                    continue
+                try:
                     if counter < 1:
                         stop = time.time()
                         counter = 300
@@ -352,14 +428,23 @@ if __name__ == "__main__":
             except:
                 pass 
         if len(camera_estimates) > 0:
-            fused_estimate = pv.fuse_robot_pose_multicam(camera_estimates)
-            Display["BOTX"] = round(fused_estimate.robot_xyz[0].item(),1)
-            Display["BOTY"] = round(fused_estimate.robot_xyz[1].item(),1)
-            Display["YAW "] = round(fused_estimate.robot_yaw,1)
-            pubRobotWorldX.set(fused_estimate.robot_xyz[0].item())
-            pubRobotWorldY.set(fused_estimate.robot_xyz[1].item())
-            pubRobotWorldR.set(fused_estimate.robot_yaw)
+            camera_estimates = [e for e in camera_estimates if e is not None]
+            if not camera_estimates:
+                fused_estimate = None
+            else:
+                fused_estimate = pv.fuse_robot_pose_multicam(camera_estimates)
+            if fused_estimate is not None:
+                V26.publish_fused(fused_estimate)
+            else:
+                V26.publish_fused(None)
+            #Display["BOTX"] = round(fused_estimate.robot_xyz[0].item(),1)
+            #Display["BOTY"] = round(fused_estimate.robot_xyz[1].item(),1)
+            #Display["YAW "] = round(fused_estimate.robot_yaw,1)
+            #pubRobotWorldX.set(fused_estimate.robot_xyz[0].item())
+            #pubRobotWorldY.set(fused_estimate.robot_xyz[1].item())
+            #pubRobotWorldR.set(fused_estimate.robot_yaw)
 
-            overlay(frame,Display,Cam.width,Cam.height)
+            #overlay(frame,Display,Cam.width,Cam.height)
             output_stream.putFrame(frame)
             #print ('fused:', round(robot_xyz[0],1), round(robot_xyz[1],1), round(robot_yaw,1))
+

@@ -1,43 +1,16 @@
 # $Source: /home/scrobotics/src/2026/RCS/PiggyVision26.py,v $
-# $Revision: 3.10 $
-# $Date: 2026/03/29 14:25:09 $
+# $Revision: 4.0 $
+# $Date: 2026/04/09 23:58:52 $
 # $Author: scrobotics $
 import json
 import math
 import numpy as np
 import cv2
 from ntcore import NetworkTableInstance
-
-nt     = NetworkTableInstance.getDefault()
-VRtable = nt.getTable("Vision/Right")
-VLtable = nt.getTable("Vision/Left")
-VBtable = nt.getTable("Vision/Back")
-
-def publish_tags(detected_tags, camName, frame_time):
-    match camName:
-        case 'LeftCam':
-            table = VLtable
-        case 'RightCam':
-            table = VRtable
-        case 'BackCam':
-            table = VBtable
-    if len(detected_tags) == 0:
-        table.putNumber("tagCount",0)
-    else:
-        data = []
-        for det in detected_tags:
-            t = det.tvec.reshape(3)
-            r = det.rvec.reshape(3)
-            data.extend([
-                det.id,
-                t[0], t[1], t[2],
-                r[0], r[1], r[2],
-                det.error, det.ambiguity
-            ])
-        table.putNumberArray("tags", data)
-        table.putNumber("tagCount", len(detected_tags))
-
-    table.putNumber("timestamp", frame_time)
+inst   = NetworkTableInstance.getDefault()
+#BackTbl  = inst.getTable(f"/Vision26/BackCam")
+#LeftTbl  = inst.getTable(f"/Vision26/LeftCam")
+#RightTbl = inst.getTable(f"/Vision26/RightCam")
 
 # Tag size in inches
 TAG_SIZE = 6.5
@@ -52,20 +25,95 @@ TAG_OBJECT_POINTS = np.array([
 ], dtype=np.float32)
 
 class DetectedTags:
-    def __init__(self, id, rvec, tvec, error, ambiguity):
-        self.id        = id
-        self.rvec      = rvec
-        self.tvec      = tvec
-        self.error     = error
-        self.ambiguity = ambiguity
+    def __init__(self, id, rvec, tvec, camera_world=None, camera_yaw=None, err=None):
+        self.id   = id
+        self.rvec = rvec
+        self.tvec = tvec
+        self.camera_world = camera_world
+        self.camera_yaw = camera_yaw
+        self.err = err
 
 class PoseEstimate:
-    def __init__(self, robot_xyz, robot_yaw, avg_distance, num_tags, timestamp):
-        self.robot_xyz    = robot_xyz
-        self.robot_yaw    = robot_yaw
-        self.avg_distance = avg_distance
-        self.num_tags     = num_tags
-        self.timestamp    = timestamp
+    def __init__( self, robot_xyz, robot_yaw, avg_distance, num_tags, timestamp,\
+        tag_ids=None, std_dev_x=None, std_dev_y=None, std_dev_yaw=None,\
+        avg_reproj_error=None, ambiguity=None, camera_name=None, thetax=None, thetay=None
+    ):
+        self.robot_X          = robot_xyz[0] # / 39.37  # inches -> meter
+        self.robot_Y          = robot_xyz[1] # / 39.37  # inches -> meter
+        self.robot_Z          = robot_xyz[2] # / 39.37  # inches -> meter
+        self.robot_yaw        = robot_yaw
+        self.avg_distance     = avg_distance # / 39.37  # inches -> meter
+        self.num_tags         = num_tags
+        self.timestamp        = timestamp
+        self.tag_ids          = tag_ids or []
+        self.tag_count        = len(tag_ids)
+        self.thetax           = thetax
+        self.thetay           = thetay
+        self.std_dev_x        = std_dev_x
+        self.std_dev_y        = std_dev_y
+        self.std_dev_yaw      = std_dev_yaw
+        self.avg_reproj_error = avg_reproj_error
+        self.ambiguity        = ambiguity
+        self.camera_name      = camera_name
+
+#class VisionTable:
+#    def __init__(self):
+#        base = inst.getTable("Vision26")
+#        self.cameras = {
+#            name: CameraTable(base, name)
+#            for name in ["LeftCam", "RightCam", "BackCam"]
+#        }
+#        self.fused = CameraTable(base, "Fused")
+#
+#    def publish_camera(self, name, pose):
+#        self.cameras[name].publish(pose)
+#
+#    def publish_fused(self, pose):
+#        self.fused.publish(pose)
+#
+#class CameraTable:
+#    def __init__(self, base_table, name):
+#        self.table        = base_table.getSubTable(name)
+#        self.robot_X      = self.table.getDoubleTopic("robot_X").publish()
+#        self.robot_Y      = self.table.getDoubleTopic("robot_Y").publish()
+#        self.robot_Z      = self.table.getDoubleTopic("robot_Z").publish()
+#        self.robot_yaw    = self.table.getDoubleTopic("robot_yaw").publish()
+#        self.timestamp    = self.table.getDoubleTopic("timestamp").publish()
+#        self.latency      = self.table.getDoubleTopic("latency").publish()
+#        self.tag_ids      = self.table.getIntegerArrayTopic("tag_ids").publish()
+#        self.tag_count    = self.table.getIntegerTopic("tag_count").publish()
+#        self.avg_distance = self.table.getDoubleTopic("avg_distance").publish()
+#        self.ambiguity    = self.table.getDoubleTopic("ambiguity").publish()
+#        self.thetax       = self.table.getDoubleTopic("thetax").publish()
+#        self.thetay       = self.table.getDoubleTopic("thetay").publish()
+#        self.reproj       = self.table.getDoubleTopic("reproj_error").publish()
+#        self.std_x        = self.table.getDoubleTopic("std_x").publish()
+#        self.std_y        = self.table.getDoubleTopic("std_y").publish()
+#        self.std_yaw      = self.table.getDoubleTopic("std_yaw").publish()
+#        self.connected    = self.table.getBooleanTopic("connected").publish()
+#        self.heartbeat    = self.table.getIntegerTopic("heartbeat").publish()
+#        self.valid        = self.table.getBooleanTopic("valid").publish()
+#    def publish(self, pe):
+#        if pe is None:
+#            self.valid.set(False)
+#            return
+#        self.robot_X.set(pe.robot_X)
+#        self.robot_Y.set(pe.robot_Y)
+#        self.robot_Z.set(pe.robot_Z)
+#        self.robot_yaw.set(pe.robot_yaw)
+#        self.timestamp.set(pe.timestamp)
+#        self.latency.set(current_time - pe.timestamp)
+#        self.tag_count.set(pe.tag_count)
+#        self.avg_distance.set(pe.avg_distance)
+#        self.ambiguity.set(pe.ambiguity)
+#        self.reproj.set(pe.avg_reproj_error)
+#        self.std_x.set(pe.std_dev_x)
+#        self.std_y.set(pe.std_dev_y)
+#        self.std_yaw.set(pe.std_dev_yaw)
+#        self._heartbeat_counter += 1
+#        self.heartbeat.set(self._heartbeat_counter)
+#        self.connected.set(True)
+#        self.valid.set(True)
 
 class Webcam ():
     def __init__(self, name):
@@ -135,6 +183,105 @@ class BotCam (Webcam):
         self.name = name
         BotCam.list.append(self)    # Keep a list of cameras on bot
 
+def compute_std_devs(camera_yaw, avg_distance, avg_reproj_error):
+    # Tunable constants
+    k_depth = 0.15
+    k_lat   = 0.05
+    # Camera-frame uncertainties
+    depth_std   = k_depth * avg_distance * (1 + avg_reproj_error)
+    lateral_std = k_lat   * avg_distance * (1 + avg_reproj_error)
+    # Covariance in camera XY (X = lateral, Z = forward)
+    cov_cam_xy = np.array([ [lateral_std**2, 0], [0, depth_std**2] ])
+
+    # Rotation into world frame
+    theta = camera_yaw
+    R = np.array([ [np.cos(theta), -np.sin(theta)], [np.sin(theta),  np.cos(theta)] ])
+
+    cov_world = R @ cov_cam_xy @ R.T
+
+    std_dev_x = np.sqrt(cov_world[0,0])
+    std_dev_y = np.sqrt(cov_world[1,1])
+
+    return std_dev_x, std_dev_y
+
+def compute_std_dev_yaw(avg_distance, avg_reproj_error, num_tags, angle_factor):
+    k_yaw = 0.1
+    # Prevent divide-by-zero
+    angle_factor = max(angle_factor, 1e-3)
+    num_tags = max(num_tags, 1)
+    std_dev_yaw = (
+        k_yaw * avg_distance
+        * (1 + avg_reproj_error) / (np.sqrt(num_tags) * angle_factor)
+    )
+    return std_dev_yaw
+
+def compute_reprojection_error( obj_pts, img_pts, rvec, tvec, mtx, dist=None,\
+    use_undistorted=False):
+    """
+    Compute mean reprojection error in pixels.
+
+    Parameters:
+        obj_pts : (N,3) 3D object points (e.g. TAG_OBJECT_POINTS)
+        img_pts : (N,2) detected image points (corners OR undistorted_pts)
+        rvec, tvec : pose from solvePnP
+        mtx : camera matrix
+        dist : distortion coefficients (None if undistorted)
+        use_undistorted : True if img_pts are already undistorted
+
+    Returns:
+        mean reprojection error (float, pixels)
+    """
+
+    # --- Project points using SAME model as solvePnP ---
+    if use_undistorted:
+        # Undistorted pipeline → no distortion
+        projected, _ = cv2.projectPoints( obj_pts, rvec, tvec, mtx, None)
+    else:
+        # Normal pinhole pipeline
+        projected, _ = cv2.projectPoints( obj_pts, rvec, tvec, mtx, dist)
+
+    # --- Reshape ---
+    projected = projected.reshape(-1, 2)
+    img_pts   = img_pts.reshape(-1, 2)
+
+    # --- Per-point error ---
+    errors = np.linalg.norm(projected - img_pts, axis=1)
+
+    # --- Return mean error ---
+    return float(np.mean(errors))
+
+def rvecToEulerAngles(rvec):
+    R,_ = cv2.Rodrigues(rvec)
+    sy = math.sqrt(R[0,0]**2 + R[1,0]**2)
+    singular = sy < 1e-6
+    if not singular:
+        roll  = math.atan2(R[2,1], R[2,2])   # X
+        pitch = math.atan2(-R[2,0], sy)      # Y
+        yaw   = math.atan2(R[1,0], R[0,0])   # Z
+    else:
+        roll  = math.atan2(-R[1,2], R[1,1])
+        pitch = math.atan2(-R[2,0], sy)
+        yaw   = 0
+    return np.array([roll, pitch, yaw])
+
+def compute_target_angles_from_ray(px, py, mtx):
+    """
+    Compute horizontal (thetax) and vertical (thetay) angles
+    from pixel coordinates using camera intrinsics.
+    Works with undistorted points (pinhole model).
+    """
+    fx = mtx[0,0]
+    fy = mtx[1,1]
+    cx = mtx[0,2]
+    cy = mtx[1,2]
+    # Normalize to camera ray
+    x = (px - cx) / fx
+    y = (py - cy) / fy
+    # Angles
+    thetax = np.arctan2(x, 1.0)
+    thetay = np.arctan2(y, 1.0)
+    return thetax, thetay
+
 def tag_pose_world(tag_xyz, tag_yaw):
     try:
         # Tag normal (Z_tag)
@@ -168,8 +315,10 @@ def camera_pose_world_from_tag( rvec, tvec, tag_xyz, tag_yaw):
         R_tc = R_ct.T
         t_tc = -R_tc @ t_ct
         
-        R_wt, t_wt = tag_pose_world(tag_xyz, tag_yaw)
-        
+        try:
+            R_wt, t_wt = tag_pose_world(tag_xyz, tag_yaw)
+        except Exception as e:
+            print(e,"tag_pose_world") 
         R_wc = R_wt @ R_tc
         t_wc = R_wt @ t_tc + t_wt
         
@@ -238,10 +387,105 @@ def robot_pose_from_camera(
         print ('robot_pose_from_camera error')
         print (e)
 
+#def fuse_robot_pose_multicam(robot_estimates):
+#    try:
+#        if len(robot_estimates) == 0:
+#            return None
+#
+#        weighted_pos_sum = np.zeros(2)
+#        yaw_vec_sum = np.zeros(2)
+#        weighted_distance_sum = 0.0
+#        weight_sum = 0.0
+#        timestamps = []
+#
+#        for est in robot_estimates:
+#            if est.avg_distance is None or est.num_tags == 0:
+#                continue
+#
+#            w = est.num_tags / (est.avg_distance ** 2)
+#
+#            weighted_pos_sum += w * np.array([est.robot_X, est.robot_Y])
+#            yaw_vec_sum += w * np.array([np.cos(est.robot_yaw), np.sin(est.robot_yaw)])
+#            weighted_distance_sum += w * est.avg_distance
+#
+#            weight_sum += w
+#            timestamps.append(est.timestamp)
+#
+#        if weight_sum == 0:
+#            return None
+#
+#        fused_xy = weighted_pos_sum / weight_sum
+#        fused_yaw = np.arctan2(yaw_vec_sum[1], yaw_vec_sum[0])
+#        fused_avg_distance = weighted_distance_sum / weight_sum
+#        fused_timestamp = max(timestamps)
+#
+#        return PoseEstimate(
+#            robot_xyz=np.array([fused_xy[0], fused_xy[1], 0.0]),
+#            robot_yaw=fused_yaw,
+#            avg_distance=fused_avg_distance,
+#            num_tags=sum(est.num_tags for est in robot_estimates),
+#            timestamp=fused_timestamp
+#        )
+#
+#    except Exception as e:
+#        print("fuse_robot_pose_multicam error:", e)
+#        return None
+
+def fuse_robot_pose_multicam(robot_estimates):
+    try:
+        if robot_estimates is None:
+            return None
+
+        # filter bad entries
+        robot_estimates = [e for e in robot_estimates if e is not None]
+
+        if len(robot_estimates) == 0:
+            return None
+
+        weighted_pos_sum = np.zeros(2)
+        yaw_vec_sum = np.zeros(2)
+        weighted_distance_sum = 0.0
+        weight_sum = 0.0
+        timestamps = []
+
+        for est in robot_estimates:
+            if est.avg_distance is None or est.num_tags == 0:
+                continue
+
+            w = est.num_tags / (est.avg_distance ** 2)
+
+            weighted_pos_sum += w * np.array([est.robot_X, est.robot_Y])
+            yaw_vec_sum += w * np.array([np.cos(est.robot_yaw), np.sin(est.robot_yaw)])
+            weighted_distance_sum += w * est.avg_distance
+
+            weight_sum += w
+            timestamps.append(est.timestamp)
+
+        if weight_sum == 0:
+            return None
+
+        fused_xy = weighted_pos_sum / weight_sum
+        fused_yaw = np.arctan2(yaw_vec_sum[1], yaw_vec_sum[0])
+        fused_avg_distance = weighted_distance_sum / weight_sum
+        fused_timestamp = max(timestamps) if timestamps else time.time()
+
+        return PoseEstimate(
+            robot_xyz=np.array([fused_xy[0], fused_xy[1], 0.0]),
+            robot_yaw=fused_yaw,
+            avg_distance=fused_avg_distance,
+            num_tags=sum(est.num_tags for est in robot_estimates),
+            timestamp=fused_timestamp
+        )
+
+    except Exception as e:
+        print("fuse_robot_pose_multicam error:", e)
+        return None
+
 def fuse_camera_pose_multitag(detections, TAG_DB, cam_height):
     try:
         weighted_position_sum = np.zeros(3)
         weight_sum = 0.0
+        angle_sum  = 0.0
     
         yaw_vector_sum = np.zeros(2)
     
@@ -253,8 +497,10 @@ def fuse_camera_pose_multitag(detections, TAG_DB, cam_height):
             tag_yaw = TAG_DB[tag_id]["yaw"]
     
             # --- Per-tag camera pose ---
-            camera_world, camera_yaw = \
-                camera_pose_world_from_tag( rvec, tvec, tag_xyz, tag_yaw)
+            camera_world = det.camera_world
+            camera_yaw   = det.camera_yaw
+            #camera_world, camera_yaw = \
+            #    camera_pose_world_from_tag( rvec, tvec, tag_xyz, tag_yaw)
     
             if camera_world is None:
                 continue
@@ -264,82 +510,34 @@ def fuse_camera_pose_multitag(detections, TAG_DB, cam_height):
 
             tag_normal = R_wt[:,2]
 
-            view_dir = camera_world - t_wt
-            view_dir /= np.linalg.norm(view_dir)
-
-            angle_factor = abs(np.dot(tag_normal, view_dir))
-
-            distance = np.linalg.norm(tvec)
-
-            weight = (1.0 / (distance * distance)) * angle_factor
-           
+            view_dir              = camera_world - t_wt
+            norm = np.linalg.norm(view_dir)
+            if norm < 1e-6:
+                continue
+            view_dir             /= norm
+            angle_factor          = abs(np.dot(tag_normal, view_dir))
+            distance              = np.linalg.norm(tvec)
+            weight = (1.0 / (distance**2)) * angle_factor * (1.0 / (det.err + 1e-6))
             weighted_position_sum += weight * camera_world
-            weight_sum += weight
+            weight_sum            += weight
+            angle_sum             += weight * angle_factor
     
             # --- Yaw vector accumulation ---
             yaw_vector_sum += weight * np.array([ np.cos(camera_yaw), np.sin(camera_yaw) ])
     
         if weight_sum == 0:
-            return None, None
-    
+            return None, None, None, None
+
+        yaw_confidence     = np.linalg.norm(yaw_vector_sum) / weight_sum
+        avg_angle_factor   = angle_sum / weight_sum
         fused_camera_world = weighted_position_sum / weight_sum
+        fused_camera_yaw   = np.arctan2( yaw_vector_sum[1], yaw_vector_sum[0])
     
-        fused_camera_yaw = np.arctan2( yaw_vector_sum[1], yaw_vector_sum[0])
-    
-        return fused_camera_world, fused_camera_yaw
+        return fused_camera_world, fused_camera_yaw, avg_angle_factor, yaw_confidence
     except Exception as e:
         print ('fuse_camera_pose_multitag')
         print (e)
-        return None, None
-
-def fuse_robot_pose_multicam(robot_estimates):
-    try:
-        if len(robot_estimates) == 0:
-            return None
-    
-        weighted_pos_sum = np.zeros(2)
-        yaw_vec_sum = np.zeros(2)
-        weighted_distance_sum = 0.0
-        weight_sum = 0.0
-        timestamps = []
-    
-        for est in robot_estimates:
-    
-            if est.avg_distance is None or est.num_tags == 0:
-                continue
-    
-            w = (est.num_tags) / (est.avg_distance ** 2)
-    
-            weighted_pos_sum += w * np.array([ est.robot_xyz[0], est.robot_xyz[1] ])
-    
-            yaw_vec_sum += w * np.array([ np.cos(est.robot_yaw), np.sin(est.robot_yaw) ])
-            weighted_distance_sum += w * est.avg_distance
-    
-            weight_sum += w
-            timestamps.append(est.timestamp)
-    
-        if weight_sum == 0:
-            return None
-    
-        fused_xy = weighted_pos_sum / weight_sum
-    
-        fused_yaw = np.arctan2( yaw_vec_sum[1], yaw_vec_sum[0])
-    
-        fused_avg_distance = weighted_distance_sum / weight_sum
-    
-        fused_timestamp = max(timestamps)
-    
-        return PoseEstimate(
-            robot_xyz=np.array([fused_xy[0], fused_xy[1], 0.0]),
-            robot_yaw=fused_yaw,
-            avg_distance=fused_avg_distance,
-            num_tags=sum(est.num_tags for est in robot_estimates),
-            timestamp=fused_timestamp
-        )
-    except Exception as e:
-        print ('fuse_robot_pose_multicam')
-        print (e)
-        return None
+        return None, None, None, None
 
 # These are the tags for competition. Restore them when neeed.
 """
@@ -400,51 +598,150 @@ def pose (results,Cam,frame_time):
         print (f'{Cam.name:>10s},{r.tag_id:>2d},tag_world={tag_xyz},tag_yaw_deg={tag_yaw_deg}, rvec={rvec},\ntvec={tvec},\ncamera_world={camera_world},camera_yaw={camera_yaw},\nrobot_world={robot_xyz},robot_yaw={robot_yaw}\n\n')
     from math import atan, atan2, asin, degrees
     import time
-    frame_timestamp = time.time()
+    reproj_errors = []
     distances     = []
     detected_tags = [] # Will collect all the tag IDs seen by this camera plus their rvecs & tvecs.
+    tags_in_frame = []
+    tag_weights   = []
+    ambiguities   = []
+    centers       = []
+    cx = Cam.width / 2
+    cy = Cam.height / 2
     for r in results:
         try:
             corners = r.corners.astype(np.float32)
             if len(Cam.dist) == 4:
-                undistorted_pts = cv2.fisheye.undistortPoints(
-                           r.corners.reshape(-1,1,2),Cam.mtx,Cam.dist,P=Cam.mtx)
-                retvals, rvecs, tvecs, errors = cv2.solvePnPGeneric(TAG_OBJECT_POINTS,
-                           undistorted_pts, Cam.mtx,None, flags=cv2.SOLVEPNP_IPPE_SQUARE)
+                undistorted_pts = cv2.fisheye.undistortPoints(r.corners.reshape(-1,1,2),Cam.mtx,Cam.dist,P=Cam.mtx)
+                ret, rvecs, tvecs, pnperrs = cv2.solvePnPGeneric(TAG_OBJECT_POINTS,undistorted_pts,
+                            Cam.mtx,None, flags=cv2.SOLVEPNP_IPPE_SQUARE)
+                best_idx = np.argmin(pnperrs)
+                rvec = rvecs[best_idx]
+                tvec = tvecs[best_idx]
+                err = compute_reprojection_error( TAG_OBJECT_POINTS, undistorted_pts,\
+                      rvec, tvec, Cam.mtx, None, use_undistorted=True)
+                undistorted_pts = undistorted_pts.reshape(-1,2)
+                center = np.mean(undistorted_pts, axis=0)
+                centers.append((r, center))
             else:
-                retvals, rvecs, tvecs, errors = cv2.solvePnPGeneric(TAG_OBJECT_POINTS,
-                           r.corners, Cam.mtx,None, flags=cv2.SOLVEPNP_IPPE_SQUARE)
+                ret, rvecs, tvecs, pnperrs = cv2.solvePnPGeneric(TAG_OBJECT_POINTS,r.corners,
+                            Cam.mtx,None, flags=cv2.SOLVEPNP_IPPE_SQUARE)
+                best_idx = np.argmin(pnperrs)
+                rvec = rvecs[best_idx]
+                tvec = tvecs[best_idx]
+                err = compute_reprojection_error( TAG_OBJECT_POINTS, r.corners,\
+                      rvec, tvec, Cam.mtx, Cam.dist, use_undistorted=False)
+                center = np.mean(r.corners, axis=0)
+                centers.append((r, center))
 
-            # --- pick best solution (lowest reprojection error) ---
-            best_idx = int(np.argmin(errors))
-            rvec     = rvecs[best_idx]
-            tvec     = tvecs[best_idx]
-            error    = float(errors[best_idx])
-            if len(errors) > 1:
-                ambiguity = errors[best_idx] / (errors[1-best_idx] + 1e-6)
+            reproj_errors.append(err)
+            if len(pnperrs) >= 2:
+                errs = sorted(pnperrs)
+                err1, err2 = errs[0], errs[1]
+                ambiguity = abs(err1 - err2) / (err1 + err2 + 1e-6)
             else:
                 ambiguity = 0.0
+            ambiguities.append(ambiguity)
 
-            #print ("error:",round(error,3))
             distance = np.linalg.norm(tvec)
             distances.append(distance)
-            detected_tags.append (DetectedTags(r.tag_id, rvec, tvec, error, ambiguity))
+
+            tags_in_frame.append(r.tag_id)
+
+            tag_xyz = TAG_CORNERS[r.tag_id]["center"]
+            tag_yaw = TAG_CORNERS[r.tag_id]["yaw"]
+            R_wt, t_wt = tag_pose_world(tag_xyz, tag_yaw)
+
+            camera_world_tmp, camera_yaw_tmp = \
+                camera_pose_world_from_tag(rvec, tvec, tag_xyz, tag_yaw)
+            if camera_world_tmp is None:
+                print("camera_pose_world failed for tag", r.tag_id)
+                continue
+
+            view_dir = camera_world_tmp - t_wt
+            norm = np.linalg.norm(view_dir)
+            if norm < 1e-6:
+                continue
+            view_dir /= norm
+            
+            angle_factor = abs(np.dot(R_wt[:,2], view_dir))
+            
+            err = err if err is not None else 1.0
+            weight = (1.0 / (distance**2)) * angle_factor * (1.0 / (err + 1e-6))
+
+            tag_weights.append(weight)
+            detected_tags.append( DetectedTags(r.tag_id, rvec, tvec, \
+                camera_world_tmp, camera_yaw_tmp, err))
+
         except Exception as e:
             print ('pv.pose error')
             print (e)
-            return None,None
-    tag_xyz = TAG_CORNERS[r.tag_id]["center"]
-    tag_yaw = TAG_CORNERS[r.tag_id]["yaw"]
-    camera_world, camera_yaw = fuse_camera_pose_multitag (
-                               detected_tags, TAG_CORNERS, Cam.localXYZ[2])
-    robot_xyz, robot_yaw   = camera_to_robot_world (camera_world, camera_yaw, Cam)
+            return None
+    if len(tag_weights) == 0 or sum(tag_weights) < 1e-6 or len(centers) == 0:
+        print("Early reject:",
+              "weights=", len(tag_weights),
+              "sum=", sum(tag_weights),
+              "centers=", len(centers))
+        return None
+    best             = min(centers, key=lambda item: np.linalg.norm(item[1] - [cx, cy]))
+    bestx, besty     = best[1]
+    try:
+        thetax, thetay   = compute_target_angles_from_ray(bestx, besty, Cam.mtx)
+    except Exception as e:
+        print(e,"compute_target_angles_from_ray")
+    reproj_errors = np.array(reproj_errors).flatten()
+    avg_reproj_error = np.average(reproj_errors, weights=tag_weights)
+    #tag_xyz = TAG_CORNERS[r.tag_id]["center"]
+    #tag_yaw = TAG_CORNERS[r.tag_id]["yaw"]
+
+    result = fuse_camera_pose_multitag(detected_tags, TAG_CORNERS, Cam.localXYZ[2])
+    if result is None:
+        print("fusion returned None")
+        return None
+    camera_world, camera_yaw, avg_angle_factor, yaw_confidence = result
+
+    if camera_world is None:
+        return None
+    try:
+        robot_xyz, robot_yaw   = camera_to_robot_world (camera_world, camera_yaw, Cam)
+    except Exception as e:
+        print(e,"camera_to_robot_world")
     #show_debugging_info()
 
-    avg_distance           = np.mean(distances)
-    num_tags               = len(distances)
-    publish_tags(detected_tags, Cam.name, frame_time)
+    if not (len(reproj_errors) == len(tag_weights) == len(distances) == len(ambiguities)):
+        print("Length mismatch:",
+              len(reproj_errors),
+              len(tag_weights),
+              len(distances),
+              len(ambiguities))
+        return None
+    distances     = np.array(distances).flatten()
+    ambiguities   = np.array(ambiguities).flatten()
+    tag_weights   = np.array(tag_weights).flatten()
+    avg_distance         = np.average(distances, weights=tag_weights)
+    avg_ambiguity        = np.average(ambiguities, weights=tag_weights)
+    num_tags             = len(distances)
 
-    return PoseEstimate(robot_xyz, robot_yaw, avg_distance, num_tags, frame_timestamp)
+    # --- REJECTION GATE ---
+    #if num_tags > 1:
+    #    amb_thresh = 0.5
+    #else:
+    #    amb_thresh = 0.3
+    #if (
+    #    avg_reproj_error is None or
+    #    avg_reproj_error > 5.0 or
+    #    avg_ambiguity < amb_thresh or
+    #    num_tags == 0
+    #):
+    #    return None
+
+    std_dev_x, std_dev_y = compute_std_devs(camera_yaw, avg_distance, avg_reproj_error)
+    std_dev_yaw          = compute_std_dev_yaw(avg_distance, avg_reproj_error,\
+                           num_tags, avg_angle_factor)
+    std_dev_yaw         /= (yaw_confidence + 1e-3)
+
+    return PoseEstimate(robot_xyz, robot_yaw, avg_distance, num_tags,\
+        frame_time, tags_in_frame, std_dev_x, std_dev_y, std_dev_yaw,\
+        avg_reproj_error,avg_ambiguity,Cam.name,thetax,thetay)
 
 def rotate(px, py, ox, oy, angle, Integer=False):
     """
