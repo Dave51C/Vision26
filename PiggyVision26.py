@@ -1,11 +1,12 @@
 # $Source: /home/scrobotics/src/2026/RCS/PiggyVision26.py,v $
-# $Revision: 4.0 $
-# $Date: 2026/04/09 23:58:52 $
+# $Revision: 4.2 $
+# $Date: 2026/04/11 00:52:19 $
 # $Author: scrobotics $
 import json
 import math
 import numpy as np
 import cv2
+import traceback
 from ntcore import NetworkTableInstance
 inst   = NetworkTableInstance.getDefault()
 #BackTbl  = inst.getTable(f"/Vision26/BackCam")
@@ -32,6 +33,77 @@ class DetectedTags:
         self.camera_world = camera_world
         self.camera_yaw = camera_yaw
         self.err = err
+
+
+class CustomVisionTable:
+    def __init__(self, ntinst):
+        self.base = ntinst.getTable("CustomVision")
+
+        self.heartbeat = self.base.getIntegerTopic("heartbeat").publish()
+        self.hasTag    = self.base.getBooleanTopic("hasTag").publish()
+
+        self._heartbeat = 0
+        self.tag_tables = {}
+
+    def get_tag_table(self, tag_id):
+        if tag_id not in self.tag_tables:
+            sub = self.base.getSubTable(f"Tag_{tag_id}")
+            self.tag_tables[tag_id] = TagTable(sub)
+        return self.tag_tables[tag_id]
+
+    def publish(self, targets, frame_time, proc_ms):
+        self._heartbeat += 1
+        self.heartbeat.set(self._heartbeat)
+    
+        if not targets:
+            self.hasTag.set(False)
+            return
+    
+        self.hasTag.set(True)
+    
+        for t in targets:
+            table = self.get_tag_table(t.id)
+    
+            roll, pitch, yaw = rvecToEulerAngles(t.rvec)
+            x, y, z = t.tvec.flatten()
+
+            # --- ALWAYS convert to Python types ---
+            table.tagPose.set([
+                float(x), float(y), float(z),
+                float(roll), float(pitch), float(yaw)
+            ])
+    
+            table.targetId.set(int(t.id))
+            table.ambiguity.set(float(t.ambiguity) if t.ambiguity else 0.0)
+            table.area.set(float(t.area) if t.area else 0.0)
+    
+            table.timestamp.set(float(frame_time))
+            table.procLat.set(float(proc_ms))
+            table.netLat.set(0.0)
+            table.totalLat.set(float(proc_ms))
+
+class TagTable:
+    def __init__(self, table):
+        self.tagPose    = table.getDoubleArrayTopic("tagPose").publish()
+        self.targetId   = table.getIntegerTopic("targetId").publish()
+        self.ambiguity  = table.getDoubleTopic("poseAmbiguity").publish()
+        self.area       = table.getDoubleTopic("tagArea").publish()
+        self.timestamp  = table.getDoubleTopic("publishTimestamp").publish()
+        self.procLat    = table.getDoubleTopic("processingLatency").publish()
+        self.netLat     = table.getDoubleTopic("networkLatency").publish()
+        self.totalLat   = table.getDoubleTopic("totalLatency").publish()
+
+class Target:
+    def __init__(self, id, rvec, tvec, corners,
+                 distance, center_error, area, ambiguity):
+        self.id = id
+        self.rvec = rvec
+        self.tvec = tvec
+        self.corners = corners
+        self.distance = distance
+        self.center_error = center_error
+        self.area = area
+        self.ambiguity = ambiguity
 
 class PoseEstimate:
     def __init__( self, robot_xyz, robot_yaw, avg_distance, num_tags, timestamp,\
@@ -241,6 +313,7 @@ def tag_pose_world(tag_xyz, tag_yaw):
     except Exception as e:
         print ('tag_pose_world')
         print (e)
+        traceback.print_exc()
         #return None, None
         return None
 
@@ -261,6 +334,7 @@ def camera_pose_world_from_tag( rvec, tvec, tag_xyz, tag_yaw):
             R_wt, t_wt = tag_pose_world(tag_xyz, tag_yaw)
         except Exception as e:
             print(e,"tag_pose_world") 
+            traceback.print_exc()
         R_wc = R_wt @ R_tc
         t_wc = R_wt @ t_tc + t_wt
         
@@ -269,6 +343,7 @@ def camera_pose_world_from_tag( rvec, tvec, tag_xyz, tag_yaw):
     except Exception as e:
         print('camera_pose_world_from_tag')
         print (e)
+        traceback.print_exc()
         #return None, None
         return None
 
@@ -299,6 +374,7 @@ def camera_to_robot_world(camera_world, camera_yaw, cam):
     except Exception as e:
         print ('camera_to_robot_world')
         print (e)
+        traceback.print_exc()
         #return None, None
         return None
 
@@ -330,56 +406,99 @@ def robot_pose_from_camera(
     except Exception as e:
         print ('robot_pose_from_camera error')
         print (e)
+        traceback.print_exc()
 
-#def fuse_robot_pose_multicam(robot_estimates):
-#    try:
-#        if robot_estimates is None:
-#            return None
-#
-#        # filter bad entries
-#        robot_estimates = [e for e in robot_estimates if e is not None]
-#
-#        if len(robot_estimates) == 0:
-#            return None
-#
-#        weighted_pos_sum = np.zeros(2)
-#        yaw_vec_sum = np.zeros(2)
-#        weighted_distance_sum = 0.0
-#        weight_sum = 0.0
-#        timestamps = []
-#
-#        for est in robot_estimates:
-#            if est.avg_distance is None or est.num_tags == 0:
-#                continue
-#
-#            w = est.num_tags / (est.avg_distance ** 2)
-#
-#            weighted_pos_sum += w * np.array([est.robot_X, est.robot_Y])
-#            yaw_vec_sum += w * np.array([np.cos(est.robot_yaw), np.sin(est.robot_yaw)])
-#            weighted_distance_sum += w * est.avg_distance
-#
-#            weight_sum += w
-#            timestamps.append(est.timestamp)
-#
-#        if weight_sum == 0:
-#            return None
-#
-#        fused_xy = weighted_pos_sum / weight_sum
-#        fused_yaw = np.arctan2(yaw_vec_sum[1], yaw_vec_sum[0])
-#        fused_avg_distance = weighted_distance_sum / weight_sum
-#        fused_timestamp = max(timestamps) if timestamps else time.time()
-#
-#        return PoseEstimate(
-#            robot_xyz=np.array([fused_xy[0], fused_xy[1], 0.0]),
-#            robot_yaw=fused_yaw,
-#            avg_distance=fused_avg_distance,
-#            num_tags=sum(est.num_tags for est in robot_estimates),
-#            timestamp=fused_timestamp
-#        )
-#
-#    except Exception as e:
-#        print("fuse_robot_pose_multicam error:", e)
-#        return None
+def build_targets(results, Cam):
+    targets = []
+
+    cx_img = Cam.width / 2.0
+    cy_img = Cam.height / 2.0
+
+    for r in results:
+        try:
+            corners = r.corners.astype(np.float32)
+
+            # --- SolvePnP ---
+            if len(Cam.dist) == 4:
+                undistorted_pts = cv2.fisheye.undistortPoints(
+                    corners.reshape(-1,1,2),
+                    Cam.mtx,
+                    Cam.dist,
+                    P=Cam.mtx
+                )
+
+                ret, rvecs, tvecs, reprojErrs = cv2.solvePnPGeneric(
+                    TAG_OBJECT_POINTS,
+                    undistorted_pts,
+                    Cam.mtx,
+                    None,
+                    flags=cv2.SOLVEPNP_IPPE_SQUARE
+                )
+
+                img_pts = undistorted_pts
+                distCoeffs = None
+
+            else:
+                ret, rvecs, tvecs, reprojErrs = cv2.solvePnPGeneric(
+                    TAG_OBJECT_POINTS,
+                    corners,
+                    Cam.mtx,
+                    Cam.dist,
+                    flags=cv2.SOLVEPNP_IPPE_SQUARE
+                )
+
+                img_pts = corners
+                distCoeffs = Cam.dist
+
+            if not ret or len(rvecs) == 0:
+                continue
+
+            # --- Use best solution ---
+            rvec = rvecs[0]
+            tvec = tvecs[0]
+
+            # --- Distance ---
+            distance = np.linalg.norm(tvec)
+
+            # --- Center error ---
+            cx = np.mean(corners[:,0])
+            cy = np.mean(corners[:,1])
+
+            dx = cx - cx_img
+            dy = cy - cy_img
+            center_error = np.sqrt(dx*dx + dy*dy)
+
+            # --- Area ---
+            area_px = cv2.contourArea(corners)
+            frame_area = Cam.width * Cam.height
+            area_percent = 100.0 * area_px / frame_area
+
+            # --- Ambiguity (IPPE dual solution) ---
+            if len(reprojErrs) >= 2:
+                err1 = reprojErrs[0]
+                err2 = reprojErrs[1]
+                ambiguity = abs(err1 - err2) / (err1 + err2 + 1e-6)
+            else:
+                ambiguity = 0.0
+
+            targets.append(Target(
+                r.tag_id,
+                rvec,
+                tvec,
+                corners,
+                distance,
+                center_error,
+                area_percent,
+                ambiguity
+            ))
+
+        except Exception as e:
+            print("build_targets error:", e)
+            traceback.print_exc()
+            continue
+
+    return targets
+
 def fuse_robot_pose_multicam(robot_estimates):
     import traceback
     try:
@@ -496,6 +615,7 @@ def fuse_camera_pose_multitag(detections, TAG_DB, cam_height):
     except Exception as e:
         print ('fuse_camera_pose_multitag')
         print (e)
+        traceback.print_exc()
         return None
         #return None, None, None, None
 
@@ -632,6 +752,7 @@ def pose (results,Cam,frame_time):
         except Exception as e:
             print ('pv.pose error')
             print (e)
+            traceback.print_exc()
             return None
     if len(tag_weights) == 0 or sum(tag_weights) < 1e-6 or len(centers) == 0:
         print("Early reject:",
@@ -645,6 +766,7 @@ def pose (results,Cam,frame_time):
         thetax, thetay   = compute_target_angles_from_ray(bestx, besty, Cam.mtx)
     except Exception as e:
         print(e,"compute_target_angles_from_ray")
+        traceback.print_exc()
     reproj_errors = np.array(reproj_errors).flatten()
     avg_reproj_error = np.average(reproj_errors, weights=tag_weights)
     #tag_xyz = TAG_CORNERS[r.tag_id]["center"]
@@ -662,6 +784,7 @@ def pose (results,Cam,frame_time):
         robot_xyz, robot_yaw   = camera_to_robot_world (camera_world, camera_yaw, Cam)
     except Exception as e:
         print(e,"camera_to_robot_world")
+        traceback.print_exc()
     #show_debugging_info()
 
     if not (len(reproj_errors) == len(tag_weights) == len(distances) == len(ambiguities)):

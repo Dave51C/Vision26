@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # $Source: /home/scrobotics/src/2026/RCS/Vision26.py,v $
-# $Revision: 2.0 $
-# $Date: 2026/04/10 00:01:03 $
+# $Revision: 2.2 $
+# $Date: 2026/04/11 00:50:03 $
 # $Author: scrobotics $
 
 # Copyright (c) FIRST and other WPILib contributors.
@@ -16,6 +16,7 @@ import apriltag
 from collections import deque
 import threading
 import numpy as np
+import traceback
 from pprint import pprint
 import PiggyVision26 as pv
 from math import degrees
@@ -70,26 +71,6 @@ class CameraTable:
         if pe is None:
             self.valid.set(False)
             return
-        #self.robot_X.set(pe.robot_X)
-        #self.robot_Y.set(pe.robot_Y)
-        #self.robot_Z.set(pe.robot_Z)
-        #self.robot_yaw.set(pe.robot_yaw)
-        #self.timestamp.set(pe.timestamp)
-        #self.latency.set((_now()/ 1000000) - pe.timestamp)
-        #self.tag_count.set(pe.tag_count)
-        #self.tag_ids.set(pe.tag_ids)
-        #self.avg_distance.set(pe.avg_distance)
-        #self.ambiguity.set(pe.ambiguity)
-        #self.thetax.set(pe.thetax)
-        #self.thetay.set(pe.thetay)
-        #self.reproj.set(pe.avg_reproj_error)
-        #self.std_x.set(pe.std_dev_x)
-        #self.std_y.set(pe.std_dev_y)
-        #self.std_yaw.set(pe.std_dev_yaw)
-        #self._heartbeat_counter += 1
-        #self.heartbeat.set(self._heartbeat_counter)
-        #self.connected.set(True)
-        #self.valid.set(True)
         self.robot_X.set(pe.robot_X)
         self.robot_Y.set(pe.robot_Y)
         self.robot_Z.set(pe.robot_Z)
@@ -397,9 +378,10 @@ if __name__ == "__main__":
     # Our code starts. Buckle-up!
     #########################################################################
 
-    V26 = VisionTable() 
+    V26           = VisionTable() 
+    customTable   = pv.CustomVisionTable(ntinst)
     output_stream = CameraServer.putVideo("Overlay", 640, 480)
-    options = apriltag.DetectorOptions(
+    options       = apriltag.DetectorOptions(
         families      = "tag36h11",
         quad_decimate = 2,
         quad_blur     = 0.0, 
@@ -408,46 +390,51 @@ if __name__ == "__main__":
         nthreads      = 4,
         refine_pose   = 0,
         quad_contours = 1)
-    detector = apriltag.Detector(options)
-    # loop forever
-    counter = 300
-    start = time.time()
+    detector  = apriltag.Detector(options)
+    counter   = 300
+    procstart = time.time()
     ballCount = 0
     prev_time = 0
+    # loop forever
     while True:
         camera_estimates = []
         for Cam in CamQs:
             try:
                 frame_time,frame = Cam.queue[0]       # non-destructive read
+                procstart        = time.time()
+                start            = frame_time
                 if frame_time != timers[Cam.name]:
                     counter -= 1
                     timers[Cam.name] = frame_time
-                gray = cv2.cvtColor (frame, cv2.COLOR_BGR2GRAY)
-                results = detector.detect(gray)
+                gray     = cv2.cvtColor (frame, cv2.COLOR_BGR2GRAY)
+                results  = detector.detect(gray)
                 estimate = None
                 if len(results) > 0:
                     try:
                         estimate = pv.pose(results,Cam,frame_time)
                     except Exception as e:
                         print (e)
-                    #if estimate is None:
-                    #    print("POSE FAILED for", Cam.name)
-                    #else:
-                    #    print("POSE OK for", Cam.name)
                 V26.publish_camera(Cam.name, estimate)
                 if estimate is not None:
                     camera_estimates.append(estimate)
                 else:
                     continue
+                if len(results) > 0:
+                    targets = pv.build_targets(results, Cam)
+                    proc_ms = (time.time() - procstart) * 1000.0
+                    customTable.publish(targets, frame_time, proc_ms)
+
                 try:
                     if counter < 1:
-                        stop = time.time()
+                        stop    = frame_time
                         counter = 300
-                        print (round(counter/(stop - start),1),'fps')
-                        start = stop
+                        if stop > start:
+                            print (round(counter/(stop - start),1),'fps')
+                        start   = stop
                 except Exception as e:
                     print ('frame processing')
                     print (e)
+                    traceback.print_exc()
                     pass 
             except:
                 pass 
