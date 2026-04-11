@@ -7,6 +7,7 @@ import math
 import numpy as np
 import cv2
 import traceback
+import time
 from ntcore import NetworkTableInstance
 inst   = NetworkTableInstance.getDefault()
 #BackTbl  = inst.getTable(f"/Vision26/BackCam")
@@ -34,7 +35,6 @@ class DetectedTags:
         self.camera_yaw = camera_yaw
         self.err = err
 
-
 class CustomVisionTable:
     def __init__(self, ntinst):
         self.base = ntinst.getTable("CustomVision")
@@ -47,6 +47,7 @@ class CustomVisionTable:
 
     def get_tag_table(self, tag_id):
         if tag_id not in self.tag_tables:
+            print(f"Creating Tag_{tag_id}") 
             sub = self.base.getSubTable(f"Tag_{tag_id}")
             self.tag_tables[tag_id] = TagTable(sub)
         return self.tag_tables[tag_id]
@@ -55,47 +56,71 @@ class CustomVisionTable:
         self._heartbeat += 1
         self.heartbeat.set(self._heartbeat)
     
+        seen_ids = set()
+        now = time.time()
+        HOLD_TIME = 0.2
+    
         if not targets:
             self.hasTag.set(False)
-            return
+        else:
+            self.hasTag.set(True)
     
-        self.hasTag.set(True)
+            # --- Phase 1: update seen tags ---
+            for t in targets:
+                seen_ids.add(t.id)
     
-        for t in targets:
-            table = self.get_tag_table(t.id)
+                table = self.get_tag_table(t.id)
     
-            roll, pitch, yaw = rvecToEulerAngles(t.rvec)
-            x, y, z = t.tvec.flatten()
+                roll, pitch, yaw = rvecToEulerAngles(t.rvec)
+                x, y, z = t.tvec.flatten()
+    
+                table.tagPose.set([
+                    float(x), float(y), float(z),
+                    float(roll), float(pitch), float(yaw)
+                ])
+    
+                table.targetId.set(int(t.id))
+                table.ambiguity.set(float(t.ambiguity) if t.ambiguity is not None else 0.0)
+                table.area.set(float(t.area) if t.area is not None else 0.0)
+    
+                table.timestamp.set(float(frame_time))
+                table.procLat.set(float(proc_ms))
+                table.netLat.set(0.0)
+                table.totalLat.set(float(proc_ms))
+    
+                # update time + valid
+                table._last_seen = now
+                table.lastSeen.set(now)
+                table.valid.set(True)
+                table.camera.set(t.camera)
 
-            # --- ALWAYS convert to Python types ---
-            table.tagPose.set([
-                float(x), float(y), float(z),
-                float(roll), float(pitch), float(yaw)
-            ])
-    
-            table.targetId.set(int(t.id))
-            table.ambiguity.set(float(t.ambiguity) if t.ambiguity else 0.0)
-            table.area.set(float(t.area) if t.area else 0.0)
-    
-            table.timestamp.set(float(frame_time))
-            table.procLat.set(float(proc_ms))
-            table.netLat.set(0.0)
-            table.totalLat.set(float(proc_ms))
+        # --- Phase 2: invalidate stale tags ---
+        for tag_id, table in self.tag_tables.items():
+            if (now - table._last_seen) > HOLD_TIME:
+                table.valid.set(False)
+                table.lastSeen.set(table._last_seen)  # keep topic alive
 
 class TagTable:
     def __init__(self, table):
-        self.tagPose    = table.getDoubleArrayTopic("tagPose").publish()
-        self.targetId   = table.getIntegerTopic("targetId").publish()
-        self.ambiguity  = table.getDoubleTopic("poseAmbiguity").publish()
-        self.area       = table.getDoubleTopic("tagArea").publish()
-        self.timestamp  = table.getDoubleTopic("publishTimestamp").publish()
-        self.procLat    = table.getDoubleTopic("processingLatency").publish()
-        self.netLat     = table.getDoubleTopic("networkLatency").publish()
-        self.totalLat   = table.getDoubleTopic("totalLatency").publish()
+        def pub(topic):
+            t = topic
+            t.setRetained(True)
+            return t.publish()
+        self.tagPose    = pub(table.getDoubleArrayTopic("tagPose"))
+        self.targetId   = pub(table.getIntegerTopic("targetId"))
+        self.ambiguity  = pub(table.getDoubleTopic("poseAmbiguity"))
+        self.area       = pub(table.getDoubleTopic("tagArea"))
+        self.timestamp  = pub(table.getDoubleTopic("publishTimestamp"))
+        self.procLat    = pub(table.getDoubleTopic("processingLatency"))
+        self.netLat     = pub(table.getDoubleTopic("networkLatency"))
+        self.totalLat   = pub(table.getDoubleTopic("totalLatency"))
+        self.lastSeen   = pub(table.getDoubleTopic("lastSeen"))
+        self.valid      = pub(table.getBooleanTopic("valid"))
+        self.camera     = pub(table.getStringTopic("camera"))
 
 class Target:
     def __init__(self, id, rvec, tvec, corners,
-                 distance, center_error, area, ambiguity):
+                 distance, center_error, area, ambiguity, camera=None):
         self.id = id
         self.rvec = rvec
         self.tvec = tvec
@@ -104,6 +129,7 @@ class Target:
         self.center_error = center_error
         self.area = area
         self.ambiguity = ambiguity
+        self.camera = camera
 
 class PoseEstimate:
     def __init__( self, robot_xyz, robot_yaw, avg_distance, num_tags, timestamp,\
@@ -489,7 +515,8 @@ def build_targets(results, Cam):
                 distance,
                 center_error,
                 area_percent,
-                ambiguity
+                ambiguity,
+                Cam.name
             ))
 
         except Exception as e:
