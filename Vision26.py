@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # $Source: /home/scrobotics/src/2026/RCS/Vision26.py,v $
-# $Revision: 2.2 $
-# $Date: 2026/04/11 00:50:03 $
+# $Revision: 2.3 $
+# $Date: 2026/04/12 18:25:32 $
 # $Author: scrobotics $
 
 # Copyright (c) FIRST and other WPILib contributors.
@@ -415,15 +415,12 @@ if __name__ == "__main__":
                     except Exception as e:
                         print (e)
                 V26.publish_camera(Cam.name, estimate)
+
+                targets = pv.build_targets(results, Cam)
+                proc_ms = (time.time() - procstart) * 1000.0
+                customTable.publish(targets, frame_time, proc_ms)
                 if estimate is not None:
                     camera_estimates.append(estimate)
-                else:
-                    continue
-                if len(results) > 0:
-                    targets = pv.build_targets(results, Cam)
-                    proc_ms = (time.time() - procstart) * 1000.0
-                    customTable.publish(targets, frame_time, proc_ms)
-
                 try:
                     if counter < 1:
                         stop    = frame_time
@@ -437,6 +434,7 @@ if __name__ == "__main__":
                     traceback.print_exc()
                     pass 
             except:
+                traceback.print_exc()
                 pass 
         if len(camera_estimates) > 0:
             camera_estimates = [e for e in camera_estimates if e is not None]

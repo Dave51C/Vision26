@@ -1,6 +1,6 @@
 # $Source: /home/scrobotics/src/2026/RCS/PiggyVision26.py,v $
-# $Revision: 4.2 $
-# $Date: 2026/04/11 00:52:19 $
+# $Revision: 4.3 $
+# $Date: 2026/04/12 18:25:59 $
 # $Author: scrobotics $
 import json
 import math
@@ -39,37 +39,62 @@ class CustomVisionTable:
     def __init__(self, ntinst):
         self.base = ntinst.getTable("CustomVision")
 
+        self.camera_tables = {}   # camera → { tag_id → TagTable }
+        self.camera_hasTag = {}   # camera → publisher
         self.heartbeat = self.base.getIntegerTopic("heartbeat").publish()
         self.hasTag    = self.base.getBooleanTopic("hasTag").publish()
 
         self._heartbeat = 0
-        self.tag_tables = {}
+        #self.tag_tables = {}
 
-    def get_tag_table(self, tag_id):
-        if tag_id not in self.tag_tables:
-            print(f"Creating Tag_{tag_id}") 
-            sub = self.base.getSubTable(f"Tag_{tag_id}")
-            self.tag_tables[tag_id] = TagTable(sub)
-        return self.tag_tables[tag_id]
+    def get_camera_hasTag(self, camera):
+        if camera not in self.camera_hasTag:
+            cam_sub = self.base.getSubTable(camera)
+            self.camera_hasTag[camera] = cam_sub.getBooleanTopic("hasTag").publish()
+        return self.camera_hasTag[camera]
+
+    #def get_tag_table(self, tag_id):
+    #    if tag_id not in self.tag_tables:
+    #        print(f"Creating Tag_{tag_id}") 
+    #        sub = self.base.getSubTable(f"Tag_{tag_id}")
+    #        self.tag_tables[tag_id] = TagTable(sub)
+    #    return self.tag_tables[tag_id]
+    def get_tag_table(self, camera, tag_id):
+        if camera not in self.camera_tables:
+            print(f"Creating camera table {camera}")
+            cam_sub = self.base.getSubTable(camera)
+            self.camera_tables[camera] = {}
+        cam_dict = self.camera_tables[camera]
+        if tag_id not in cam_dict:
+            print(f"Creating {camera}/Tag_{tag_id}")
+            tag_sub = self.base.getSubTable(camera).getSubTable(f"Tag_{tag_id}")
+            cam_dict[tag_id] = TagTable(tag_sub)
+        return cam_dict[tag_id]
 
     def publish(self, targets, frame_time, proc_ms):
         self._heartbeat += 1
         self.heartbeat.set(self._heartbeat)
     
-        seen_ids = set()
         now = time.time()
         HOLD_TIME = 0.2
     
+        seen_cameras = set()   # track cameras this frame
+    
         if not targets:
             self.hasTag.set(False)
+    
+            # ALL cameras → False when nothing detected anywhere
+            for cam in self.camera_hasTag:
+                self.camera_hasTag[cam].set(False)
+    
         else:
             self.hasTag.set(True)
     
             # --- Phase 1: update seen tags ---
             for t in targets:
-                seen_ids.add(t.id)
+                seen_cameras.add(t.camera)   # mark camera as active
     
-                table = self.get_tag_table(t.id)
+                table = self.get_tag_table(t.camera, t.id)
     
                 roll, pitch, yaw = rvecToEulerAngles(t.rvec)
                 x, y, z = t.tvec.flatten()
@@ -88,17 +113,83 @@ class CustomVisionTable:
                 table.netLat.set(0.0)
                 table.totalLat.set(float(proc_ms))
     
-                # update time + valid
                 table._last_seen = now
                 table.lastSeen.set(now)
                 table.valid.set(True)
                 table.camera.set(t.camera)
 
+            # Set TRUE for cameras that saw tags
+            for cam in seen_cameras:
+                self.get_camera_hasTag(cam).set(True)
+    
+            # Set FALSE for cameras that did NOT see tags
+            for cam in self.camera_hasTag:
+                if cam not in seen_cameras:
+                    self.camera_hasTag[cam].set(False)
+    
         # --- Phase 2: invalidate stale tags ---
-        for tag_id, table in self.tag_tables.items():
-            if (now - table._last_seen) > HOLD_TIME:
-                table.valid.set(False)
-                table.lastSeen.set(table._last_seen)  # keep topic alive
+        for cam, tag_dict in self.camera_tables.items():
+            for tag_id, table in tag_dict.items():
+                if (now - table._last_seen) > HOLD_TIME:
+                    table.valid.set(False)
+                    table.lastSeen.set(table._last_seen)
+
+    #def publish(self, targets, frame_time, proc_ms):
+    #    seen_cameras = set()
+    #    self._heartbeat += 1
+    #    self.heartbeat.set(self._heartbeat)
+    
+    #    seen_ids = set()
+    #    now = time.time()
+    #    HOLD_TIME = 0.2
+    
+    #    if not targets:
+    #        self.hasTag.set(False)
+    #        for cam in self.camera_hasTag:
+    #            self.camera_hasTag[cam].set(False)
+    #    else:
+    #         self.hasTag.set(True)
+
+    #        # --- Phase 1: update seen tags ---
+    #        for t in targets:
+    #            seen_ids.add(t.id)
+    #            seen_cameras.add(t.camera)
+    
+    #            #table = self.get_tag_table(t.id)
+    #            table = self.get_tag_table(t.camera, t.id)
+    
+    #            roll, pitch, yaw = rvecToEulerAngles(t.rvec)
+    #            x, y, z = t.tvec.flatten()
+    
+    #            table.tagPose.set([
+    #                float(x), float(y), float(z),
+    #                float(roll), float(pitch), float(yaw)
+    #            ])
+    
+    #            table.targetId.set(int(t.id))
+    #            table.ambiguity.set(float(t.ambiguity) if t.ambiguity is not None else 0.0)
+    #            table.area.set(float(t.area) if t.area is not None else 0.0)
+    
+    #            table.timestamp.set(float(frame_time))
+    #            table.procLat.set(float(proc_ms))
+    #            table.netLat.set(0.0)
+    #            table.totalLat.set(float(proc_ms))
+    
+    #            # update time + valid
+    #            table._last_seen = now
+    #            table.lastSeen.set(now)
+    #            table.valid.set(True)
+    #            table.camera.set(t.camera)
+
+    #        for cam in seen_cameras:
+    #            self.get_camera_hasTag(cam).set(True)
+
+    #    # --- Phase 2: invalidate stale tags ---
+    #    for cam, tag_dict in self.camera_tables.items():
+    #        for tag_id, table in tag_dict.items():
+    #            if (now - table._last_seen) > HOLD_TIME:
+    #                table.valid.set(False)
+    #                table.lastSeen.set(table._last_seen)
 
 class TagTable:
     def __init__(self, table):
@@ -110,13 +201,14 @@ class TagTable:
         self.targetId   = pub(table.getIntegerTopic("targetId"))
         self.ambiguity  = pub(table.getDoubleTopic("poseAmbiguity"))
         self.area       = pub(table.getDoubleTopic("tagArea"))
-        self.timestamp  = pub(table.getDoubleTopic("publishTimestamp"))
+        self.timestamp  = pub(table.getDoubleTopic("captureTimestamp"))
         self.procLat    = pub(table.getDoubleTopic("processingLatency"))
         self.netLat     = pub(table.getDoubleTopic("networkLatency"))
         self.totalLat   = pub(table.getDoubleTopic("totalLatency"))
         self.lastSeen   = pub(table.getDoubleTopic("lastSeen"))
         self.valid      = pub(table.getBooleanTopic("valid"))
         self.camera     = pub(table.getStringTopic("camera"))
+        self._last_seen = 0.0
 
 class Target:
     def __init__(self, id, rvec, tvec, corners,
@@ -340,8 +432,7 @@ def tag_pose_world(tag_xyz, tag_yaw):
         print ('tag_pose_world')
         print (e)
         traceback.print_exc()
-        #return None, None
-        return None
+        return None, None
 
 def camera_pose_world_from_tag( rvec, tvec, tag_xyz, tag_yaw):
     try:
@@ -370,8 +461,7 @@ def camera_pose_world_from_tag( rvec, tvec, tag_xyz, tag_yaw):
         print('camera_pose_world_from_tag')
         print (e)
         traceback.print_exc()
-        #return None, None
-        return None
+        return None, None
 
 def camera_to_robot_world(camera_world, camera_yaw, cam):
     try:
@@ -401,8 +491,7 @@ def camera_to_robot_world(camera_world, camera_yaw, cam):
         print ('camera_to_robot_world')
         print (e)
         traceback.print_exc()
-        #return None, None
-        return None
+        return None, None
 
 def robot_pose_from_camera(
     camera_xyz,
@@ -501,9 +590,9 @@ def build_targets(results, Cam):
 
             # --- Ambiguity (IPPE dual solution) ---
             if len(reprojErrs) >= 2:
-                err1 = reprojErrs[0]
-                err2 = reprojErrs[1]
-                ambiguity = abs(err1 - err2) / (err1 + err2 + 1e-6)
+                errs = sorted(reprojErrs)
+                err1, err2 = errs[0], errs[1]
+                ambiguity = err1 / (err2 + 1e-6)
             else:
                 ambiguity = 0.0
 
@@ -630,8 +719,7 @@ def fuse_camera_pose_multitag(detections, TAG_DB, cam_height):
             yaw_vector_sum += weight * np.array([ np.cos(camera_yaw), np.sin(camera_yaw) ])
     
         if weight_sum == 0:
-            return None
-            #return None, None, None, None
+            return None, None, None, None
 
         yaw_confidence     = np.linalg.norm(yaw_vector_sum) / weight_sum
         avg_angle_factor   = angle_sum / weight_sum
@@ -643,8 +731,7 @@ def fuse_camera_pose_multitag(detections, TAG_DB, cam_height):
         print ('fuse_camera_pose_multitag')
         print (e)
         traceback.print_exc()
-        return None
-        #return None, None, None, None
+        return None, None, None, None
 
 # These are the tags for competition. Restore them when neeed.
 """
@@ -744,7 +831,8 @@ def pose (results,Cam,frame_time):
             if len(pnperrs) >= 2:
                 errs = sorted(pnperrs)
                 err1, err2 = errs[0], errs[1]
-                ambiguity = abs(err1 - err2) / (err1 + err2 + 1e-6)
+                ambiguity = err1 / (err2 + 1e-6)
+                #ambiguity = abs(err1 - err2) / (err1 + err2 + 1e-6)
             else:
                 ambiguity = 0.0
             ambiguities.append(ambiguity)
@@ -829,17 +917,17 @@ def pose (results,Cam,frame_time):
     num_tags             = len(distances)
 
     # --- REJECTION GATE ---
-    #if num_tags > 1:
-    #    amb_thresh = 0.5
-    #else:
-    #    amb_thresh = 0.3
-    #if (
-    #    avg_reproj_error is None or
-    #    avg_reproj_error > 5.0 or
-    #    avg_ambiguity < amb_thresh or
-    #    num_tags == 0
-    #):
-    #    return None
+    if num_tags > 1:
+        amb_thresh = 0.5
+    else:
+        amb_thresh = 0.3
+    if (
+        avg_reproj_error is None or
+        avg_reproj_error > 5.0 or
+        avg_ambiguity < amb_thresh or
+        num_tags == 0
+    ):
+        return None
 
     std_dev_x, std_dev_y = compute_std_devs(camera_yaw, avg_distance, avg_reproj_error)
     std_dev_yaw          = compute_std_dev_yaw(avg_distance, avg_reproj_error,\
