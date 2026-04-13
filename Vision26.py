@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # $Source: /home/scrobotics/src/2026/RCS/Vision26.py,v $
-# $Revision: 2.3 $
-# $Date: 2026/04/12 18:25:32 $
+# $Revision: 2.4 $
+# $Date: 2026/04/13 20:41:25 $
 # $Author: scrobotics $
 
 # Copyright (c) FIRST and other WPILib contributors.
@@ -37,12 +37,25 @@ class VisionTable:
             for name in ["LeftCam", "RightCam", "BackCam"]
         }
         self.fused = CameraTable(base, "Fused")
+        self.last_frame_time = {}   # camera → timestamp
 
     def publish_camera(self, name, pose):
         self.cameras[name].publish(pose)
 
     def publish_fused(self, pose):
         self.fused.publish(pose)
+
+    def update_connections(self):
+        now = time.time()
+        TIMEOUT = 0.25
+    
+        for name, table in self.cameras.items():
+            last = self.last_frame_time.get(name, 0)
+    
+            if (now - last) < TIMEOUT:
+                table.connected.set(True)
+            else:
+                table.connected.set(False)
 
 class CameraTable:
     def __init__(self, base_table, name):
@@ -70,6 +83,9 @@ class CameraTable:
     def publish(self, pe):
         if pe is None:
             self.valid.set(False)
+            #self.connected.set(True)
+            self._heartbeat_counter += 1
+            self.heartbeat.set(self._heartbeat_counter)
             return
         self.robot_X.set(pe.robot_X)
         self.robot_Y.set(pe.robot_Y)
@@ -89,7 +105,7 @@ class CameraTable:
         self.thetay.set(pe.thetay if pe.thetay is not None else 0.0)
         self._heartbeat_counter += 1
         self.heartbeat.set(self._heartbeat_counter)
-        self.connected.set(True)
+        #self.connected.set(True)
         self.valid.set(True)
 
 team                  = None
@@ -401,6 +417,7 @@ if __name__ == "__main__":
         for Cam in CamQs:
             try:
                 frame_time,frame = Cam.queue[0]       # non-destructive read
+                V26.last_frame_time[Cam.name] = frame_time
                 procstart        = time.time()
                 start            = frame_time
                 if frame_time != timers[Cam.name]:
@@ -414,6 +431,7 @@ if __name__ == "__main__":
                         estimate = pv.pose(results,Cam,frame_time)
                     except Exception as e:
                         print (e)
+                #print("Publishing", Cam.name, "estimate:", estimate is not None)
                 V26.publish_camera(Cam.name, estimate)
 
                 targets = pv.build_targets(results, Cam)
@@ -456,4 +474,5 @@ if __name__ == "__main__":
             overlay(frame,Display,Cam.width,Cam.height)
             output_stream.putFrame(frame)
             #print ('fused:', round(robot_xyz[0],1), round(robot_xyz[1],1), round(robot_yaw,1))
+        V26.update_connections()
 
